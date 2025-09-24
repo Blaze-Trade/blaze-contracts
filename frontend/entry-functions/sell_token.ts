@@ -10,14 +10,13 @@ export type SellTokenArguments = {
 
 export const sellToken = (args: SellTokenArguments): InputTransactionData => {
   const { faObj, amount, decimals } = args;
-  console.log("sell_token amount", amount);
   return {
     data: {
       function: `${import.meta.env.VITE_MODULE_ADDRESS}::launchpad::sell_token`,
       typeArguments: [],
       functionArguments: [
         faObj,
-        amount
+        convertAmountFromHumanReadableToOnChain(amount, decimals)
       ],
     },
   };
