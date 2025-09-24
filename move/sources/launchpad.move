@@ -1,4 +1,4 @@
-module launchpad_addr::launchpad {
+module blaze_launchpad::launchpad {
     use std::option::{Self, Option};
     use std::signer;
     use std::string::String;
@@ -10,8 +10,6 @@ module launchpad_addr::launchpad {
     use aptos_std::table::{Self, Table};
 
     use aptos_framework::aptos_account;
-    use aptos_framework::aptos_coin;
-    use aptos_framework::coin;
     use aptos_framework::event;
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::object::{Self, Object, ObjectCore};
@@ -181,7 +179,7 @@ module launchpad_addr::launchpad {
         sender: &signer, new_admin: address
     ) acquires Config {
         let sender_addr = signer::address_of(sender);
-        let config = borrow_global_mut<Config>(@launchpad_addr);
+        let config = borrow_global_mut<Config>(@blaze_launchpad);
         assert!(is_admin(config, sender_addr), EONLY_ADMIN_CAN_SET_PENDING_ADMIN);
         config.pending_admin_addr = option::some(new_admin);
     }
@@ -189,7 +187,7 @@ module launchpad_addr::launchpad {
     /// Accept admin of the contract
     public entry fun accept_admin(sender: &signer) acquires Config {
         let sender_addr = signer::address_of(sender);
-        let config = borrow_global_mut<Config>(@launchpad_addr);
+        let config = borrow_global_mut<Config>(@blaze_launchpad);
         assert!(
             config.pending_admin_addr == option::some(sender_addr), ENOT_PENDING_ADMIN
         );
@@ -202,7 +200,7 @@ module launchpad_addr::launchpad {
         sender: &signer, new_mint_fee_collector: address
     ) acquires Config {
         let sender_addr = signer::address_of(sender);
-        let config = borrow_global_mut<Config>(@launchpad_addr);
+        let config = borrow_global_mut<Config>(@blaze_launchpad);
         assert!(
             is_admin(config, sender_addr), EONLY_ADMIN_CAN_UPDATE_MINT_FEE_COLLECTOR
         );
@@ -228,7 +226,7 @@ module launchpad_addr::launchpad {
     ) acquires Registry, FAController {
         let sender_addr = signer::address_of(sender);
 
-        let fa_obj_constructor_ref = &object::create_sticky_object(@launchpad_addr);
+        let fa_obj_constructor_ref = &object::create_sticky_object(@blaze_launchpad);
         let fa_obj_signer = &object::generate_signer(fa_obj_constructor_ref);
 
         primary_fungible_store::create_primary_store_enabled_fungible_asset(
@@ -267,7 +265,7 @@ module launchpad_addr::launchpad {
             }
         );
 
-        let registry = borrow_global_mut<Registry>(@launchpad_addr);
+        let registry = borrow_global_mut<Registry>(@blaze_launchpad);
         registry.fa_objects.push_back(fa_obj);
 
         event::emit(
@@ -323,7 +321,7 @@ module launchpad_addr::launchpad {
     ) acquires Registry {
         let sender_addr = signer::address_of(sender);
 
-        let fa_obj_constructor_ref = &object::create_sticky_object(@launchpad_addr);
+        let fa_obj_constructor_ref = &object::create_sticky_object(@blaze_launchpad);
         let fa_obj_signer = &object::generate_signer(fa_obj_constructor_ref);
 
         primary_fungible_store::create_primary_store_enabled_fungible_asset(
@@ -369,7 +367,7 @@ module launchpad_addr::launchpad {
             }
         );
 
-        let registry = borrow_global_mut<Registry>(@launchpad_addr);
+        let registry = borrow_global_mut<Registry>(@blaze_launchpad);
         registry.fa_objects.push_back(fa_obj);
 
         event::emit(
@@ -411,11 +409,11 @@ module launchpad_addr::launchpad {
         
         // Pay for minting - deposit APT into liquidity pool
         if (total_cost > 0) {
-            let liquidity_pool = borrow_global_mut<LiquidityPool>(@launchpad_addr);
+            let liquidity_pool = borrow_global_mut<LiquidityPool>(@blaze_launchpad);
             liquidity_pool.total_apt_collected = liquidity_pool.total_apt_collected + total_cost;
             
             // Transfer APT from user to contract for liquidity pool
-            aptos_account::transfer(sender, @launchpad_addr, total_cost);
+            aptos_account::transfer(sender, @blaze_launchpad, total_cost);
         };
         
         // Mint tokens
@@ -473,11 +471,11 @@ module launchpad_addr::launchpad {
         
         // Pay user in APT from liquidity pool
         if (payout > 0) {
-            let liquidity_pool = borrow_global_mut<LiquidityPool>(@launchpad_addr);
+            let liquidity_pool = borrow_global_mut<LiquidityPool>(@blaze_launchpad);
             liquidity_pool.total_apt_paid_out = liquidity_pool.total_apt_paid_out + payout;
             
             // Transfer APT from contract to user
-            aptos_account::transfer(sender, @launchpad_addr, payout);
+            aptos_account::transfer(sender, @blaze_launchpad, payout);
         };
         
         let price_per_token = if (amount > 0) { payout / amount } else { 0 };
@@ -497,28 +495,28 @@ module launchpad_addr::launchpad {
     #[view]
     /// Get contract admin
     public fun get_admin(): address acquires Config {
-        let config = borrow_global<Config>(@launchpad_addr);
+        let config = borrow_global<Config>(@blaze_launchpad);
         config.admin_addr
     }
 
     #[view]
     /// Get contract pending admin
     public fun get_pending_admin(): Option<address> acquires Config {
-        let config = borrow_global<Config>(@launchpad_addr);
+        let config = borrow_global<Config>(@blaze_launchpad);
         config.pending_admin_addr
     }
 
     #[view]
     /// Get mint fee collector address
     public fun get_mint_fee_collector(): address acquires Config {
-        let config = borrow_global<Config>(@launchpad_addr);
+        let config = borrow_global<Config>(@blaze_launchpad);
         config.mint_fee_collector_addr
     }
 
     #[view]
     /// Get all fungible assets created using this contract
     public fun get_registry(): vector<Object<Metadata>> acquires Registry {
-        let registry = borrow_global<Registry>(@launchpad_addr);
+        let registry = borrow_global<Registry>(@blaze_launchpad);
         registry.fa_objects
     }
 
@@ -616,14 +614,14 @@ module launchpad_addr::launchpad {
     #[view]
     /// Get liquidity pool information
     public fun get_liquidity_pool(): (u64, u64) acquires LiquidityPool {
-        let liquidity_pool = borrow_global<LiquidityPool>(@launchpad_addr);
+        let liquidity_pool = borrow_global<LiquidityPool>(@blaze_launchpad);
         (liquidity_pool.total_apt_collected, liquidity_pool.total_apt_paid_out)
     }
 
     #[view]
     /// Get available liquidity (collected - paid out)
     public fun get_available_liquidity(): u64 acquires LiquidityPool {
-        let liquidity_pool = borrow_global<LiquidityPool>(@launchpad_addr);
+        let liquidity_pool = borrow_global<LiquidityPool>(@blaze_launchpad);
         liquidity_pool.total_apt_collected - liquidity_pool.total_apt_paid_out
     }
 
@@ -655,8 +653,8 @@ module launchpad_addr::launchpad {
     fun is_admin(config: &Config, sender: address): bool {
         if (sender == config.admin_addr) { true }
         else {
-            if (object::is_object(@launchpad_addr)) {
-                let obj = object::address_to_object<ObjectCore>(@launchpad_addr);
+            if (object::is_object(@blaze_launchpad)) {
+                let obj = object::address_to_object<ObjectCore>(@blaze_launchpad);
                 object::is_owner(obj, sender)
             } else { false }
         }
@@ -700,7 +698,7 @@ module launchpad_addr::launchpad {
     /// Pay for mint
     fun pay_for_mint(sender: &signer, total_mint_fee: u64) acquires Config {
         if (total_mint_fee > 0) {
-            let config = borrow_global<Config>(@launchpad_addr);
+            let config = borrow_global<Config>(@blaze_launchpad);
             aptos_account::transfer(
                 sender, config.mint_fee_collector_addr, total_mint_fee
             )
@@ -712,7 +710,7 @@ module launchpad_addr::launchpad {
     #[test_only]
     use aptos_framework::account;
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_happy_path(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, FAController, Config, FAConfig {
@@ -776,7 +774,7 @@ module launchpad_addr::launchpad {
 
     // ================================= Bonding Curve Tests ================================== //
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_bonding_curve_basic_functionality(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve {
@@ -827,7 +825,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_bonding_curve_minting(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -874,7 +872,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_bonding_curve_price_increases(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -922,7 +920,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_bonding_curve_target_reached(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -965,7 +963,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_bonding_curve_mint_limit_enforcement(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -1013,7 +1011,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_sell_token_basic_functionality(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -1062,7 +1060,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_sell_token_price_decreases(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -1114,7 +1112,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_sell_token_insufficient_balance(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry {
@@ -1152,7 +1150,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_sell_token_after_target_reached(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
@@ -1199,7 +1197,7 @@ module launchpad_addr::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    #[test(aptos_framework = @0x1, sender = @blaze_launchpad)]
     fun test_liquidity_pool_functionality(
         aptos_framework: &signer, sender: &signer
     ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
