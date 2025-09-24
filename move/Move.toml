@@ -1,10 +1,10 @@
 [package]
-name = "blaze_launchpad"
+name = "blaze_launchpad_v2"
 version = "1.0.0"
 authors = []
 
 [addresses]
-blaze_token_launchpad = '0xd29e66e33f6503f903c88e95d8d9e0f8608d2957a93172733816712a2bd2a4ba'
+blaze_token_launchpad = "0x29406b90430108f65b22f4ab736f08272573fe5a57855c0e7599c76ea9bcff7e"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework"}
