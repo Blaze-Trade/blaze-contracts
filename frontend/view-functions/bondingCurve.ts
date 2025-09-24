@@ -28,12 +28,12 @@ export const getBondingCurve = async (args: BondingCurveArguments): Promise<Bond
   };
 };
 
-export const getBondingCurvePrice = async (args: BondingCurveArguments): Promise<number> => {
-  const { faObj } = args;
+export const getBondingCurvePrice = async (args: BondingCurveArguments & { amount: number }): Promise<number> => {
+  const { faObj, amount } = args;
   const result = await aptosClient().view<[number]>({
     payload: {
       function: `${import.meta.env.VITE_MODULE_ADDRESS}::launchpad::get_bonding_curve_price`,
-      functionArguments: [faObj],
+      functionArguments: [faObj, amount],
     },
   });
   

@@ -25,7 +25,7 @@ import { config } from "@/config";
 import { buyToken } from "@/entry-functions/buy_token";
 import { sellToken } from "@/entry-functions/sell_token";
 // Internal view functions
-import { getBondingCurve, getBondingCurveMintCost, getBondingCurveSellPayout } from "@/view-functions/bondingCurve";
+import { getBondingCurve, getBondingCurveMintCost, getBondingCurveSellPayout, getBondingCurvePrice } from "@/view-functions/bondingCurve";
 
 interface HeroSectionProps {
   faAddress?: string;
@@ -40,6 +40,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
   const [bondingCurveData, setBondingCurveData] = useState<any>(null);
   const [costToBuy, setCostToBuy] = useState<number>(0);
   const [payoutToSell, setPayoutToSell] = useState<number>(0);
+  const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [isLoadingPrices, setIsLoadingPrices] = useState<boolean>(false);
 
   const { asset, totalAbleToMint = 0, yourBalance = 0, maxSupply = 0, currentSupply = 0 } = data ?? {
@@ -68,26 +69,39 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
       setIsLoadingPrices(true);
       const amount = parseFloat(assetCount);
       if (!Number.isNaN(amount) && amount > 0) {
+        // Convert amount to the smallest unit (assuming 8 decimals for the token)
+        const amountInSmallestUnit = Math.floor(amount * Math.pow(10, asset?.decimals || 8));
+        
         Promise.all([
-          getBondingCurveMintCost({ faObj: faAddress, amount }),
-          getBondingCurveSellPayout({ faObj: faAddress, amount })
-        ]).then(([cost, payout]) => {
+          getBondingCurveMintCost({ faObj: faAddress, amount: amountInSmallestUnit }),
+          getBondingCurveSellPayout({ faObj: faAddress, amount: amountInSmallestUnit }),
+          getBondingCurvePrice({ faObj: faAddress, amount: amountInSmallestUnit })
+        ]).then(([cost, payout, price]) => {
+          console.log("Raw values from contract:", { cost, payout, price, amountInSmallestUnit });
+          console.log("Converted values:", { 
+            costAPT: cost / 1e8, 
+            payoutAPT: payout / 1e8, 
+            priceAPT: price / 1e8 
+          });
           setCostToBuy(cost);
           setPayoutToSell(payout);
+          setCurrentPrice(price);
           setIsLoadingPrices(false);
         }).catch(error => {
           console.error("Error calculating prices:", error);
           setCostToBuy(0);
           setPayoutToSell(0);
+          setCurrentPrice(0);
           setIsLoadingPrices(false);
         });
       } else {
         setCostToBuy(0);
         setPayoutToSell(0);
+        setCurrentPrice(0);
         setIsLoadingPrices(false);
       }
     }
-  }, [faAddress, assetCount, bondingCurveData]);
+  }, [faAddress, assetCount, bondingCurveData, asset]);
 
   const buyTokenAction = async (e: FormEvent) => {
     e.preventDefault();
@@ -197,7 +211,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
 
             {/* Price Information */}
             {bondingCurveData?.is_active && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="text-center">
+                  <p className="label-sm">Current Price</p>
+                  <p className="body-md font-semibold">
+                    {isLoadingPrices ? "..." : `${(currentPrice / 1e8).toFixed(6)} APT`}
+                  </p>
+                </div>
                 <div className="text-center">
                   <p className="label-sm">Cost to Buy</p>
                   <p className="body-md font-semibold">
