@@ -72,16 +72,27 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
         // Convert amount to the smallest unit (assuming 8 decimals for the token)
         const amountInSmallestUnit = Math.floor(amount * Math.pow(10, asset?.decimals || 8));
         
+        // Calculate current price for 1 token (in smallest unit)
+        const oneTokenInSmallestUnit = Math.pow(10, asset?.decimals || 8);
+        
         Promise.all([
           getBondingCurveMintCost({ faObj: faAddress, amount: amountInSmallestUnit }),
           getBondingCurveSellPayout({ faObj: faAddress, amount: amountInSmallestUnit }),
-          getBondingCurvePrice({ faObj: faAddress, amount: amountInSmallestUnit })
+          getBondingCurvePrice({ faObj: faAddress, amount: oneTokenInSmallestUnit })
         ]).then(([cost, payout, price]) => {
-          console.log("Raw values from contract:", { cost, payout, price, amountInSmallestUnit });
+          console.log("Raw values from contract:", { 
+            cost, 
+            payout, 
+            price, 
+            amountInSmallestUnit,
+            oneTokenInSmallestUnit 
+          });
           console.log("Converted values:", { 
             costAPT: cost / 1e8, 
             payoutAPT: payout / 1e8, 
-            priceAPT: price / 1e8 
+            priceAPT: price / 1e8,
+            userAmount: amount,
+            pricePerToken: (price / 1e8)
           });
           setCostToBuy(cost);
           setPayoutToSell(payout);
@@ -213,19 +224,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
             {bondingCurveData?.is_active && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="text-center">
-                  <p className="label-sm">Current Price</p>
+                  <p className="label-sm">Price per Token</p>
                   <p className="body-md font-semibold">
                     {isLoadingPrices ? "..." : `${(currentPrice / 1e8).toFixed(6)} APT`}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="label-sm">Cost to Buy</p>
+                  <p className="label-sm">Total Cost to Buy</p>
                   <p className="body-md font-semibold">
                     {isLoadingPrices ? "..." : `${(costToBuy / 1e8).toFixed(6)} APT`}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="label-sm">Payout to Sell</p>
+                  <p className="label-sm">Total Payout to Sell</p>
                   <p className="body-md font-semibold">
                     {isLoadingPrices ? "..." : `${(payoutToSell / 1e8).toFixed(6)} APT`}
                   </p>
