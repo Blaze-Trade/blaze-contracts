@@ -7,6 +7,11 @@ module blaze_token_launchpad::launchpad {
     #[test_only]
     use std::string;
 
+    #[test_only]
+    use aptos_framework::coin;
+    #[test_only]
+    use aptos_framework::aptos_coin;
+
     use aptos_std::table::{Self, Table};
 
     use aptos_framework::aptos_account;
