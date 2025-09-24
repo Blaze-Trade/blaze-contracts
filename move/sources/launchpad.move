@@ -187,6 +187,10 @@ module blaze_token_launchpad::launchpad {
                 total_apt_paid_out: 0
             }
         );
+        
+        // Initialize resource account for liquidity management
+        let (_resource_account, signer_cap) = account::create_resource_account(sender, b"liquidity_pool");
+        move_to(sender, ResourceAccountCapability { signer_capability: signer_cap });
     }
 
     // ================================= Entry Functions ================================= //
@@ -224,25 +228,6 @@ module blaze_token_launchpad::launchpad {
         config.mint_fee_collector_addr = new_mint_fee_collector;
     }
 
-    /// Initialize resource account for liquidity management (admin only)
-    public entry fun initialize_resource_account(
-        sender: &signer, seed: vector<u8>
-    ) acquires Config {
-        let sender_addr = signer::address_of(sender);
-        let config = borrow_global<Config>(@blaze_token_launchpad);
-        assert!(is_admin(config, sender_addr), EONLY_ADMIN_CAN_UPDATE_MINT_FEE_COLLECTOR);
-        
-        // Check if resource account is already initialized
-        if (exists<ResourceAccountCapability>(@blaze_token_launchpad)) {
-            return
-        };
-        
-        // Create resource account
-        let (_resource_account, signer_cap) = account::create_resource_account(sender, seed);
-        
-        // Store the signer capability
-        move_to(sender, ResourceAccountCapability { signer_capability: signer_cap });
-    }
 
     /// Create a fungible asset, only admin or creator can create FA
     public entry fun create_fa(
@@ -887,7 +872,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_bonding_curve_minting(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -895,8 +880,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create FA with bonding curve
         create_token(
@@ -937,7 +920,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_bonding_curve_price_increases(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -945,8 +928,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create FA with bonding curve
         create_token(
@@ -988,7 +969,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_bonding_curve_target_reached(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -996,8 +977,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create FA with low target supply for testing
         create_token(
@@ -1034,7 +1013,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_bonding_curve_mint_limit_enforcement(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1042,8 +1021,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create FA with bonding curve and low mint limit
         create_token(
@@ -1085,7 +1062,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_sell_token_basic_functionality(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1093,8 +1070,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create token with bonding curve
         create_token(
@@ -1165,7 +1140,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_sell_token_price_decreases(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1173,8 +1148,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create token with bonding curve
         create_token(
@@ -1262,7 +1235,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_sell_token_after_target_reached(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1270,8 +1243,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create token with low target supply
         create_token(
@@ -1312,7 +1283,7 @@ module blaze_token_launchpad::launchpad {
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_liquidity_pool_functionality(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1320,8 +1291,6 @@ module blaze_token_launchpad::launchpad {
         test_account::create_account_for_test(sender_addr);
         coin::register<aptos_coin::AptosCoin>(sender);
 
-        // Initialize resource account for liquidity management
-        initialize_resource_account(sender, b"test_seed");
 
         // Create token with bonding curve
         create_token(
