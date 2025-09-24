@@ -839,7 +839,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000, // target supply
-            1000000, // virtual liquidity
+            1000, // virtual liquidity
             2, // curve exponent
             option::some(100000) // mint limit per addr
         );
@@ -850,7 +850,7 @@ module blaze_token_launchpad::launchpad {
         // Test initial bonding curve state
         let curve = get_bonding_curve(fa_obj);
         assert!(curve.target_supply == 1000000, 10);
-        assert!(curve.virtual_liquidity == 1000000, 11);
+        assert!(curve.virtual_liquidity == 1000, 11);
         assert!(curve.curve_exponent == 2, 12);
         assert!(curve.is_active == true, 13);
 
@@ -891,7 +891,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
@@ -939,7 +939,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
@@ -1032,7 +1032,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(1000) // low mint limit
         );
@@ -1081,7 +1081,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
@@ -1159,7 +1159,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
@@ -1215,7 +1215,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
@@ -1302,7 +1302,7 @@ module blaze_token_launchpad::launchpad {
             string::utf8(b"icon_url"),
             string::utf8(b"project_url"),
             1000000,
-            1000000,
+            1000,
             2,
             option::some(100000)
         );
