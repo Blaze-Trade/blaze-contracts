@@ -25,3 +25,5 @@ Some commands are built-in the template and can be ran as a npm script, for exam
 - `npm run deploy` - a command to deploy the dapp to Vercel
 
 For all other available CLI commands, can run `npx aptos` and see a list of all available commands.
+
+aptos move publish --package-dir move/ --profile blaze-devnet

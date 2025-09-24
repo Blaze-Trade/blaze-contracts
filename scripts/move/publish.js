@@ -12,10 +12,10 @@ async function publish() {
   move
     .createObjectAndPublishPackage({
       packageDirectoryPath: "move",
-      addressName: "launchpad_addr",
+      addressName: "blaze_token_launchpad",
       namedAddresses: {
         // Publish module to account address
-        launchpad_addr: accountAddress,
+        blaze_token_launchpad: accountAddress,
       },
       profile: `${process.env.PROJECT_NAME}-${process.env.VITE_APP_NETWORK}`,
     })
