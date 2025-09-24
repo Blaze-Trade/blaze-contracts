@@ -10,6 +10,8 @@ module launchpad_addr::launchpad {
     use aptos_std::table::{Self, Table};
 
     use aptos_framework::aptos_account;
+    use aptos_framework::aptos_coin;
+    use aptos_framework::coin;
     use aptos_framework::event;
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::object::{Self, Object, ObjectCore};
@@ -143,6 +145,14 @@ module launchpad_addr::launchpad {
         mint_fee_collector_addr: address
     }
 
+    /// Global liquidity pool for bonding curve tokens
+    struct LiquidityPool has key {
+        // Total APT collected from token purchases
+        total_apt_collected: u64,
+        // Total APT paid out from token sales
+        total_apt_paid_out: u64
+    }
+
     /// If you deploy the module under an object, sender is the object's signer
     /// If you deploy the moduelr under your own account, sender is your account's signer
     fun init_module(sender: &signer) {
@@ -153,6 +163,13 @@ module launchpad_addr::launchpad {
                 admin_addr: signer::address_of(sender),
                 pending_admin_addr: option::none(),
                 mint_fee_collector_addr: signer::address_of(sender)
+            }
+        );
+        move_to(
+            sender,
+            LiquidityPool {
+                total_apt_collected: 0,
+                total_apt_paid_out: 0
             }
         );
     }
@@ -377,7 +394,7 @@ module launchpad_addr::launchpad {
     /// Buy tokens through bonding curve
     public entry fun buy_token(
         sender: &signer, fa_obj: Object<Metadata>, amount: u64
-    ) acquires FAController, FAConfig, Config, BondingCurve {
+    ) acquires FAController, FAConfig, BondingCurve, LiquidityPool {
         let sender_addr = signer::address_of(sender);
         
         // Check if bonding curve is still active and get values
@@ -392,10 +409,13 @@ module launchpad_addr::launchpad {
         // Calculate cost using bonding curve
         let total_cost = get_bonding_curve_mint_cost(fa_obj, amount);
         
-        // Pay for minting
+        // Pay for minting - deposit APT into liquidity pool
         if (total_cost > 0) {
-            let config = borrow_global<Config>(@launchpad_addr);
-            aptos_account::transfer(sender, config.mint_fee_collector_addr, total_cost);
+            let liquidity_pool = borrow_global_mut<LiquidityPool>(@launchpad_addr);
+            liquidity_pool.total_apt_collected = liquidity_pool.total_apt_collected + total_cost;
+            
+            // Transfer APT from user to contract for liquidity pool
+            aptos_account::transfer(sender, @launchpad_addr, total_cost);
         };
         
         // Mint tokens
@@ -432,7 +452,7 @@ module launchpad_addr::launchpad {
     /// Sell tokens through bonding curve
     public entry fun sell_token(
         sender: &signer, fa_obj: Object<Metadata>, amount: u64
-    ) acquires FAController, BondingCurve {
+    ) acquires FAController, BondingCurve, LiquidityPool {
         let sender_addr = signer::address_of(sender);
         
         // Check if bonding curve is still active
@@ -451,9 +471,14 @@ module launchpad_addr::launchpad {
         let fa_controller = borrow_global<FAController>(fa_obj_addr);
         primary_fungible_store::burn(&fa_controller.burn_ref, sender_addr, amount);
         
-        // TODO: Implement APT payout mechanism
-        // Note: For now, this function burns tokens but doesn't transfer APT
-        // A proper implementation would require the contract to maintain a liquidity pool
+        // Pay user in APT from liquidity pool
+        if (payout > 0) {
+            let liquidity_pool = borrow_global_mut<LiquidityPool>(@launchpad_addr);
+            liquidity_pool.total_apt_paid_out = liquidity_pool.total_apt_paid_out + payout;
+            
+            // Transfer APT from contract to user
+            aptos_account::transfer(sender, @launchpad_addr, payout);
+        };
         
         let price_per_token = if (amount > 0) { payout / amount } else { 0 };
         event::emit(
@@ -589,6 +614,20 @@ module launchpad_addr::launchpad {
     }
 
     #[view]
+    /// Get liquidity pool information
+    public fun get_liquidity_pool(): (u64, u64) acquires LiquidityPool {
+        let liquidity_pool = borrow_global<LiquidityPool>(@launchpad_addr);
+        (liquidity_pool.total_apt_collected, liquidity_pool.total_apt_paid_out)
+    }
+
+    #[view]
+    /// Get available liquidity (collected - paid out)
+    public fun get_available_liquidity(): u64 acquires LiquidityPool {
+        let liquidity_pool = borrow_global<LiquidityPool>(@launchpad_addr);
+        liquidity_pool.total_apt_collected - liquidity_pool.total_apt_paid_out
+    }
+
+    #[view]
     /// Get total payout for selling amount through bonding curve
     public fun get_bonding_curve_sell_payout(
         fa_obj: Object<Metadata>,
@@ -672,10 +711,6 @@ module launchpad_addr::launchpad {
 
     #[test_only]
     use aptos_framework::account;
-    #[test_only]
-    use aptos_framework::aptos_coin;
-    #[test_only]
-    use aptos_framework::coin;
 
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_happy_path(
@@ -795,7 +830,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_bonding_curve_minting(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -842,7 +877,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_bonding_curve_price_increases(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -890,7 +925,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_bonding_curve_target_reached(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -933,7 +968,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_bonding_curve_mint_limit_enforcement(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -981,7 +1016,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_sell_token_basic_functionality(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1030,7 +1065,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_sell_token_price_decreases(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1120,7 +1155,7 @@ module launchpad_addr::launchpad {
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_sell_token_after_target_reached(
         aptos_framework: &signer, sender: &signer
-    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
         let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
         let sender_addr = signer::address_of(sender);
 
@@ -1159,6 +1194,68 @@ module launchpad_addr::launchpad {
         // Try to sell tokens (should fail because bonding curve is inactive)
         let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
         assert!(user_balance == buy_amount, 91); // User still has tokens
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    fun test_liquidity_pool_functionality(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
+
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"LIQUIDITY_TOKEN"),
+            string::utf8(b"LIQ"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
+
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
+
+        // Check initial liquidity pool state
+        let (collected, paid_out) = get_liquidity_pool();
+        assert!(collected == 0, 100);
+        assert!(paid_out == 0, 101);
+        assert!(get_available_liquidity() == 0, 102);
+
+        // Buy tokens to add liquidity
+        let buy_amount = 1000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
+
+        // Check liquidity pool after buying
+        let (collected_after_buy, paid_out_after_buy) = get_liquidity_pool();
+        assert!(collected_after_buy == buy_cost, 103);
+        assert!(paid_out_after_buy == 0, 104);
+        assert!(get_available_liquidity() == buy_cost, 105);
+
+        // Sell some tokens to test payout
+        let sell_amount = 500;
+        let sell_payout = get_bonding_curve_sell_payout(fa_obj, sell_amount);
+        sell_token(sender, fa_obj, sell_amount);
+
+        // Check liquidity pool after selling
+        let (collected_after_sell, paid_out_after_sell) = get_liquidity_pool();
+        assert!(collected_after_sell == buy_cost, 106);
+        assert!(paid_out_after_sell == sell_payout, 107);
+        assert!(get_available_liquidity() == buy_cost - sell_payout, 108);
 
         coin::destroy_burn_cap(burn_cap);
         coin::destroy_mint_cap(mint_cap);
