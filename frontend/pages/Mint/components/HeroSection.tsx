@@ -42,12 +42,23 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
   const [payoutToSell, setPayoutToSell] = useState<number>(0);
   const [isLoadingPrices, setIsLoadingPrices] = useState<boolean>(false);
 
-  const { asset, totalAbleToMint = 0, yourBalance = 0, maxSupply = 0, currentSupply = 0 } = data ?? {};
+  const { asset, totalAbleToMint = 0, yourBalance = 0, maxSupply = 0, currentSupply = 0 } = data ?? {
+    asset: null,
+    totalAbleToMint: 0,
+    yourBalance: 0,
+    maxSupply: 0,
+    currentSupply: 0
+  };
 
   // Fetch bonding curve data when asset changes
   useEffect(() => {
     if (faAddress) {
-      getBondingCurve({ faObj: faAddress }).then(setBondingCurveData);
+      getBondingCurve({ faObj: faAddress })
+        .then(setBondingCurveData)
+        .catch(error => {
+          console.error("Error fetching bonding curve data:", error);
+          setBondingCurveData(null);
+        });
     }
   }, [faAddress]);
 
@@ -64,7 +75,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
           setCostToBuy(cost);
           setPayoutToSell(payout);
           setIsLoadingPrices(false);
-        }).catch(() => setIsLoadingPrices(false));
+        }).catch(error => {
+          console.error("Error calculating prices:", error);
+          setCostToBuy(0);
+          setPayoutToSell(0);
+          setIsLoadingPrices(false);
+        });
       } else {
         setCostToBuy(0);
         setPayoutToSell(0);

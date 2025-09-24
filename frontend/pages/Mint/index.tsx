@@ -23,7 +23,9 @@ export function Mint() {
   if (isLoading) {
     return (
       <div className="text-center p-8">
-        <h1 className="title-md">Loading...</h1>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+        <h1 className="title-md">Loading token data...</h1>
+        <p className="text-sm text-gray-500 mt-2">This may take a moment due to API rate limits</p>
       </div>
     );
   }

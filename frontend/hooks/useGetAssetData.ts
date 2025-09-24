@@ -40,14 +40,20 @@ interface MintData {
 }
 
 async function getMintLimit(fa_address: string): Promise<number> {
-  const mintLimitRes = await aptosClient().view<[{ vec: [string] }]>({
-    payload: {
-      function: `${AccountAddress.from(MODULE_ADDRESS)}::launchpad::get_mint_limit`,
-      functionArguments: [fa_address],
-    },
-  });
+  try {
+    const mintLimitRes = await aptosClient().view<[boolean, number]>({
+      payload: {
+        function: `${AccountAddress.from(MODULE_ADDRESS)}::launchpad::get_mint_limit`,
+        functionArguments: [fa_address],
+      },
+    });
 
-  return Number(mintLimitRes[0].vec[0]);
+    // Return the limit if it exists, otherwise return 0
+    return mintLimitRes[0] ? mintLimitRes[1] : 0;
+  } catch (error) {
+    console.error("Error getting mint limit:", error);
+    return 0; // Default to 0 if there's an error
+  }
 }
 
 /**
@@ -58,7 +64,9 @@ export function useGetAssetData(fa_address?: string) {
 
   return useQuery({
     queryKey: ["app-state", fa_address],
-    refetchInterval: 1000 * 30,
+    refetchInterval: 1000 * 60, // Reduced from 30s to 60s to avoid rate limiting
+    retry: 3, // Retry failed requests
+    retryDelay: 5000, // Wait 5s between retries
     queryFn: async () => {
       try {
         if (!fa_address) return null;
@@ -100,7 +108,10 @@ export function useGetAssetData(fa_address?: string) {
         });
 
         const asset = res.fungible_asset_metadata[0];
-        if (!asset) return null;
+        if (!asset) {
+          console.warn(`No asset found for address: ${fa_address}`);
+          return null;
+        }
 
         return {
           asset,
@@ -115,7 +126,31 @@ export function useGetAssetData(fa_address?: string) {
           isMintActive: asset.maximum_v2 > asset.supply_v2,
         } satisfies MintData;
       } catch (error) {
-        console.error(error);
+        console.error("Error fetching asset data:", error);
+        
+        // If it's a rate limit error, return a minimal data structure
+        if (error instanceof Error && error.message.includes("rate limit")) {
+          console.warn("Rate limit exceeded, returning minimal data");
+          return {
+            asset: {
+              maximum_v2: 0,
+              supply_v2: 0,
+              name: "Unknown",
+              symbol: "UNK",
+              decimals: 8,
+              asset_type: fa_address!,
+              icon_uri: ""
+            },
+            maxSupply: 0,
+            currentSupply: 0,
+            uniqueHolders: 0,
+            totalAbleToMint: 0,
+            yourBalance: 0,
+            isMintActive: false,
+          };
+        }
+        
+        return null;
       }
     },
   });
