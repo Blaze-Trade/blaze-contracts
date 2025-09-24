@@ -1,4 +1,4 @@
-import { FC, FormEvent, useState } from "react";
+import { FC, FormEvent, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 // Internal utils
@@ -22,7 +22,10 @@ import Copy from "@/assets/icons/copy.svg";
 // Internal config
 import { config } from "@/config";
 // Internal entry functions
-import { mintAsset } from "@/entry-functions/mint_asset";
+import { buyToken } from "@/entry-functions/buy_token";
+import { sellToken } from "@/entry-functions/sell_token";
+// Internal view functions
+import { getBondingCurve, getBondingCurveMintCost, getBondingCurveSellPayout } from "@/view-functions/bondingCurve";
 
 interface HeroSectionProps {
   faAddress?: string;
@@ -34,10 +37,43 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
   const { account, signAndSubmitTransaction } = useWallet();
   const [assetCount, setAssetCount] = useState<string>("1");
   const [error, setError] = useState<string | null>(null);
+  const [bondingCurveData, setBondingCurveData] = useState<any>(null);
+  const [costToBuy, setCostToBuy] = useState<number>(0);
+  const [payoutToSell, setPayoutToSell] = useState<number>(0);
+  const [isLoadingPrices, setIsLoadingPrices] = useState<boolean>(false);
 
   const { asset, totalAbleToMint = 0, yourBalance = 0, maxSupply = 0, currentSupply = 0 } = data ?? {};
 
-  const mintFA = async (e: FormEvent) => {
+  // Fetch bonding curve data when asset changes
+  useEffect(() => {
+    if (faAddress) {
+      getBondingCurve({ faObj: faAddress }).then(setBondingCurveData);
+    }
+  }, [faAddress]);
+
+  // Update prices when amount changes
+  useEffect(() => {
+    if (faAddress && assetCount && bondingCurveData?.is_active) {
+      setIsLoadingPrices(true);
+      const amount = parseFloat(assetCount);
+      if (!Number.isNaN(amount) && amount > 0) {
+        Promise.all([
+          getBondingCurveMintCost({ faObj: faAddress, amount }),
+          getBondingCurveSellPayout({ faObj: faAddress, amount })
+        ]).then(([cost, payout]) => {
+          setCostToBuy(cost);
+          setPayoutToSell(payout);
+          setIsLoadingPrices(false);
+        }).catch(() => setIsLoadingPrices(false));
+      } else {
+        setCostToBuy(0);
+        setPayoutToSell(0);
+        setIsLoadingPrices(false);
+      }
+    }
+  }, [faAddress, assetCount, bondingCurveData]);
+
+  const buyTokenAction = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -58,16 +94,61 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
       return setError("Invalid amount");
     }
 
-    const response = await signAndSubmitTransaction(
-      mintAsset({
-        assetType: asset.asset_type,
-        amount,
-        decimals: asset.decimals,
-      }),
-    );
-    await aptosClient().waitForTransaction({ transactionHash: response.hash });
-    queryClient.invalidateQueries();
-    setAssetCount("1");
+    try {
+      const response = await signAndSubmitTransaction(
+        buyToken({
+          faObj: asset.asset_type,
+          amount,
+          decimals: asset.decimals,
+        }),
+      );
+      await aptosClient().waitForTransaction({ transactionHash: response.hash });
+      queryClient.invalidateQueries();
+      setAssetCount("1");
+    } catch (err: any) {
+      setError(err.message || "Transaction failed");
+    }
+  };
+
+  const sellTokenAction = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!account) {
+      return setError("Please connect your wallet");
+    }
+
+    if (!asset) {
+      return setError("Asset not found");
+    }
+
+    if (!bondingCurveData?.is_active) {
+      return setError("Bonding curve is not active");
+    }
+
+    if (yourBalance < parseFloat(assetCount)) {
+      return setError("Insufficient balance");
+    }
+
+    const amount = parseFloat(assetCount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      return setError("Invalid amount");
+    }
+
+    try {
+      const response = await signAndSubmitTransaction(
+        sellToken({
+          faObj: asset.asset_type,
+          amount,
+          decimals: asset.decimals,
+        }),
+      );
+      await aptosClient().waitForTransaction({ transactionHash: response.hash });
+      queryClient.invalidateQueries();
+      setAssetCount("1");
+    } catch (err: any) {
+      setError(err.message || "Transaction failed");
+    }
   };
 
   return (
@@ -82,11 +163,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
         <Socials />
 
         <Card>
-          <CardContent
-            fullPadding
-            className="flex flex-col md:flex-row gap-4 md:justify-between items-start md:items-center"
-          >
-            <form onSubmit={mintFA} className="flex flex-col md:flex-row gap-4 w-full md:basis-1/4">
+          <CardContent fullPadding className="space-y-4">
+            {/* Token Amount Input */}
+            <div className="flex flex-col md:flex-row gap-4 items-center">
               <Input
                 type="text"
                 name="amount"
@@ -94,24 +173,65 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ faAddress }: HeroSecti
                 onChange={(e) => {
                   setAssetCount(e.target.value);
                 }}
+                placeholder="Amount to trade"
+                className="flex-1"
               />
-              <Button className="h-16 md:h-auto" type="submit">
-                Mint
-              </Button>
-            </form>
-
-            <div className="flex flex-col basis-1/3">
-              <p className="label-sm">You can mint up to</p>
-              <p className="body-md">
-                {Math.min(totalAbleToMint, maxSupply - currentSupply)} {asset?.symbol}
-              </p>
+              <span className="text-sm text-gray-500">{asset?.symbol}</span>
             </div>
 
-            <div className="flex flex-col basis-1/3">
-              <p className="label-sm">Your Balance</p>
-              <p className="body-md">
-                {yourBalance} {asset?.symbol}
-              </p>
+            {/* Price Information */}
+            {bondingCurveData?.is_active && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="text-center">
+                  <p className="label-sm">Cost to Buy</p>
+                  <p className="body-md font-semibold">
+                    {isLoadingPrices ? "..." : `${(costToBuy / 1e8).toFixed(6)} APT`}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="label-sm">Payout to Sell</p>
+                  <p className="body-md font-semibold">
+                    {isLoadingPrices ? "..." : `${(payoutToSell / 1e8).toFixed(6)} APT`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <Button 
+                onClick={buyTokenAction}
+                className="flex-1"
+                disabled={!data?.isMintActive || isLoadingPrices}
+              >
+                Buy Tokens
+              </Button>
+              {bondingCurveData?.is_active && (
+                <Button 
+                  onClick={sellTokenAction}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={yourBalance < parseFloat(assetCount) || isLoadingPrices}
+                >
+                  Sell Tokens
+                </Button>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+              <div className="text-center">
+                <p className="label-sm">Max Supply</p>
+                <p className="body-md">{maxSupply} {asset?.symbol}</p>
+              </div>
+              <div className="text-center">
+                <p className="label-sm">Current Supply</p>
+                <p className="body-md">{currentSupply} {asset?.symbol}</p>
+              </div>
+              <div className="text-center">
+                <p className="label-sm">Your Balance</p>
+                <p className="body-md">{yourBalance} {asset?.symbol}</p>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -6,8 +6,21 @@ import { accountAPTBalance } from "@/view-functions/accountBalance";
 const getWebIrys = async (aptosWallet: any) => {
   const network = "devnet"; // Irys network
   const token = "aptos";
-  const rpcUrl = "testnet"; // Aptos network "mainnet" || "testnet"
-  const wallet = { rpcUrl: rpcUrl, name: "aptos", provider: aptosWallet };
+  const rpcUrl = "devnet"; // Aptos network "mainnet" || "testnet" || "devnet"
+  
+  // Ensure we have the proper wallet structure
+  if (!aptosWallet.account?.address) {
+    throw new Error("Wallet not connected or account not available");
+  }
+  
+  const wallet = { 
+    rpcUrl: rpcUrl, 
+    name: "aptos", 
+    provider: aptosWallet,
+    // Add explicit public key handling
+    publicKey: aptosWallet.account.publicKey || aptosWallet.account.address
+  };
+  
   const webIrys = new WebIrys({ network, token, wallet });
   await webIrys.ready();
   return webIrys;
