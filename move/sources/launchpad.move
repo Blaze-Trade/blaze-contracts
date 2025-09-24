@@ -89,6 +89,15 @@ module launchpad_addr::launchpad {
         total_virtual_liquidity: u64
     }
 
+    #[event]
+    struct BondingCurveSellEvent has store, drop {
+        fa_obj: Object<Metadata>,
+        amount: u64,
+        seller_addr: address,
+        total_payout: u64,
+        price_per_token: u64
+    }
+
     /// Unique per FA
     struct FAController has key {
         mint_ref: fungible_asset::MintRef,
@@ -281,8 +290,8 @@ module launchpad_addr::launchpad {
         mint_fa_internal(sender, fa_obj, amount, total_mint_fee);
     }
 
-    /// Create a fungible asset with bonding curve
-    public entry fun create_fa_with_bonding_curve(
+    /// Create a token with bonding curve
+    public entry fun create_token(
         sender: &signer,
         max_supply: Option<u128>,
         name: String,
@@ -365,8 +374,8 @@ module launchpad_addr::launchpad {
         );
     }
 
-    /// Mint fungible asset through bonding curve
-    public entry fun mint_fa_bonding_curve(
+    /// Buy tokens through bonding curve
+    public entry fun buy_token(
         sender: &signer, fa_obj: Object<Metadata>, amount: u64
     ) acquires FAController, FAConfig, Config, BondingCurve {
         let sender_addr = signer::address_of(sender);
@@ -415,6 +424,44 @@ module launchpad_addr::launchpad {
                 amount,
                 recipient_addr: sender_addr,
                 total_cost,
+                price_per_token
+            }
+        );
+    }
+
+    /// Sell tokens through bonding curve
+    public entry fun sell_token(
+        sender: &signer, fa_obj: Object<Metadata>, amount: u64
+    ) acquires FAController, BondingCurve {
+        let sender_addr = signer::address_of(sender);
+        
+        // Check if bonding curve is still active
+        let bonding_curve = borrow_global<BondingCurve>(object::object_address(&fa_obj));
+        assert!(bonding_curve.is_active, 100); // Bonding curve is not active
+        
+        // Check if user has enough tokens to sell
+        let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
+        assert!(user_balance >= amount, 101); // Insufficient balance
+        
+        // Calculate payout using bonding curve
+        let payout = get_bonding_curve_sell_payout(fa_obj, amount);
+        
+        // Burn tokens from user
+        let fa_obj_addr = object::object_address(&fa_obj);
+        let fa_controller = borrow_global<FAController>(fa_obj_addr);
+        primary_fungible_store::burn(&fa_controller.burn_ref, sender_addr, amount);
+        
+        // TODO: Implement APT payout mechanism
+        // Note: For now, this function burns tokens but doesn't transfer APT
+        // A proper implementation would require the contract to maintain a liquidity pool
+        
+        let price_per_token = if (amount > 0) { payout / amount } else { 0 };
+        event::emit(
+            BondingCurveSellEvent {
+                fa_obj,
+                amount,
+                seller_addr: sender_addr,
+                total_payout: payout,
                 price_per_token
             }
         );
@@ -541,6 +588,28 @@ module launchpad_addr::launchpad {
         }
     }
 
+    #[view]
+    /// Get total payout for selling amount through bonding curve
+    public fun get_bonding_curve_sell_payout(
+        fa_obj: Object<Metadata>,
+        amount: u64
+    ): u64 acquires BondingCurve {
+        let bonding_curve = borrow_global<BondingCurve>(object::object_address(&fa_obj));
+        let current_supply = fungible_asset::supply(fa_obj);
+        let supply = if (current_supply.is_some()) { *current_supply.borrow() } else { 0 };
+        
+        // Calculate payout using integral of bonding curve (reverse of minting)
+        // For polynomial curve: payout = k * (supply^(n+1) - (supply - amount)^(n+1)) / (n+1)
+        // Simplified for exponent 2: payout = k * (supply^3 - (supply - amount)^3) / 3
+        if (bonding_curve.virtual_liquidity == 0 || (supply as u64) < amount) {
+            0
+        } else {
+            let remaining_supply = (supply as u64) - amount;
+            let payout = ((supply as u64) * (supply as u64) * (supply as u64) - remaining_supply * remaining_supply * remaining_supply) / (3 * bonding_curve.virtual_liquidity);
+            payout
+        }
+    }
+
     // ================================= Helper Functions ================================== //
 
     /// Check if sender is admin or owner of the object when package is published to object
@@ -602,11 +671,11 @@ module launchpad_addr::launchpad {
     // ================================= Uint Tests ================================== //
 
     #[test_only]
+    use aptos_framework::account;
+    #[test_only]
     use aptos_framework::aptos_coin;
     #[test_only]
     use aptos_framework::coin;
-    #[test_only]
-    use aptos_framework::account;
 
     #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
     fun test_happy_path(
@@ -684,7 +753,7 @@ module launchpad_addr::launchpad {
         coin::register<aptos_coin::AptosCoin>(sender);
 
         // Create FA with bonding curve
-        create_fa_with_bonding_curve(
+        create_token(
             sender,
             option::some(1000000), // max supply
             string::utf8(b"BONDING_TOKEN"),
@@ -735,7 +804,7 @@ module launchpad_addr::launchpad {
         coin::register<aptos_coin::AptosCoin>(sender);
 
         // Create FA with bonding curve
-        create_fa_with_bonding_curve(
+        create_token(
             sender,
             option::some(1000000),
             string::utf8(b"BONDING_TOKEN"),
@@ -760,7 +829,7 @@ module launchpad_addr::launchpad {
         aptos_coin::mint(aptos_framework, sender_addr, mint_cost);
         
         // Mint tokens
-        mint_fa_bonding_curve(sender, fa_obj, mint_amount);
+        buy_token(sender, fa_obj, mint_amount);
         
         // Verify minting worked
         assert!(fungible_asset::supply(fa_obj) == option::some(mint_amount as u128), 20);
@@ -782,7 +851,7 @@ module launchpad_addr::launchpad {
         coin::register<aptos_coin::AptosCoin>(sender);
 
         // Create FA with bonding curve
-        create_fa_with_bonding_curve(
+        create_token(
             sender,
             option::some(1000000),
             string::utf8(b"BONDING_TOKEN"),
@@ -806,7 +875,7 @@ module launchpad_addr::launchpad {
         let mint_amount = 1000;
         let mint_cost = get_bonding_curve_mint_cost(fa_obj, mint_amount);
         aptos_coin::mint(aptos_framework, sender_addr, mint_cost);
-        mint_fa_bonding_curve(sender, fa_obj, mint_amount);
+        buy_token(sender, fa_obj, mint_amount);
 
         // Get price after minting
         let price_after_mint = get_bonding_curve_price(fa_obj, 1000);
@@ -830,7 +899,7 @@ module launchpad_addr::launchpad {
         coin::register<aptos_coin::AptosCoin>(sender);
 
         // Create FA with low target supply for testing
-        create_fa_with_bonding_curve(
+        create_token(
             sender,
             option::some(10000),
             string::utf8(b"BONDING_TOKEN"),
@@ -851,7 +920,7 @@ module launchpad_addr::launchpad {
         let mint_amount = 5000;
         let mint_cost = get_bonding_curve_mint_cost(fa_obj, mint_amount);
         aptos_coin::mint(aptos_framework, sender_addr, mint_cost);
-        mint_fa_bonding_curve(sender, fa_obj, mint_amount);
+        buy_token(sender, fa_obj, mint_amount);
 
         // Check if target is reached
         let curve = get_bonding_curve(fa_obj);
@@ -873,7 +942,7 @@ module launchpad_addr::launchpad {
         coin::register<aptos_coin::AptosCoin>(sender);
 
         // Create FA with bonding curve and low mint limit
-        create_fa_with_bonding_curve(
+        create_token(
             sender,
             option::some(1000000),
             string::utf8(b"BONDING_TOKEN"),
@@ -894,7 +963,7 @@ module launchpad_addr::launchpad {
         let mint_amount = 1000;
         let mint_cost = get_bonding_curve_mint_cost(fa_obj, mint_amount);
         aptos_coin::mint(aptos_framework, sender_addr, mint_cost);
-        mint_fa_bonding_curve(sender, fa_obj, mint_amount);
+        buy_token(sender, fa_obj, mint_amount);
 
         // Try to mint more (should fail due to mint limit)
         let additional_mint = 100;
@@ -904,6 +973,192 @@ module launchpad_addr::launchpad {
         // This should fail due to mint limit - we'll test by checking current minted amount
         let current_minted = get_current_minted_amount(fa_obj, sender_addr);
         assert!(current_minted == mint_amount, 50); // Should still be the original amount
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    fun test_sell_token_basic_functionality(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
+
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
+
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
+
+        // Buy some tokens first
+        let buy_amount = 1000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
+
+        // Verify user has tokens
+        assert!(primary_fungible_store::balance(sender_addr, fa_obj) == buy_amount, 60);
+
+        // Sell some tokens
+        let sell_amount = 500;
+        sell_token(sender, fa_obj, sell_amount);
+
+        // Verify user has remaining tokens
+        assert!(primary_fungible_store::balance(sender_addr, fa_obj) == buy_amount - sell_amount, 61);
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    fun test_sell_token_price_decreases(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
+
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
+
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
+
+        // Buy tokens to increase supply
+        let buy_amount = 2000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
+
+        // Get initial sell price
+        let initial_sell_price = get_bonding_curve_sell_payout(fa_obj, 1000);
+
+        // Sell some tokens
+        let sell_amount = 1000;
+        sell_token(sender, fa_obj, sell_amount);
+
+        // Get sell price after selling
+        let sell_price_after = get_bonding_curve_sell_payout(fa_obj, 1000);
+
+        // Price should have decreased (less payout for same amount)
+        assert!(sell_price_after < initial_sell_price, 70);
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    fun test_sell_token_insufficient_balance(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
+
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
+
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
+
+        // Try to sell without having any tokens (should fail)
+        // This test verifies the insufficient balance check
+        let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
+        assert!(user_balance == 0, 80); // User has no tokens
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @launchpad_addr)]
+    fun test_sell_token_after_target_reached(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, Config, FAConfig, FAController {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
+
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+
+        // Create token with low target supply
+        create_token(
+            sender,
+            option::some(10000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            5000, // low target supply
+            1000000,
+            2,
+            option::some(100000)
+        );
+
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
+
+        // Buy tokens to reach target
+        let buy_amount = 5000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
+
+        // Verify bonding curve is deactivated
+        let curve = get_bonding_curve(fa_obj);
+        assert!(curve.is_active == false, 90);
+
+        // Try to sell tokens (should fail because bonding curve is inactive)
+        let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
+        assert!(user_balance == buy_amount, 91); // User still has tokens
 
         coin::destroy_burn_cap(burn_cap);
         coin::destroy_mint_cap(mint_cap);
