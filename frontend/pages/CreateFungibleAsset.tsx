@@ -33,13 +33,10 @@ export function CreateFungibleAsset() {
   const [decimal, setDecimal] = useState<string>();
   const [image, setImage] = useState<File | null>(null);
   const [projectURL, setProjectURL] = useState<string>("");
-  const [mintFeePerFA, setMintFeePerFA] = useState<number>();
-  const [mintForMyself, setMintForMyself] = useState<number>();
-  
-  // Bonding curve parameters
-  const [bondingCurveMode, setBondingCurveMode] = useState<boolean>(false);
-  const [virtualLiquidity, setVirtualLiquidity] = useState<number>();
+  // Bonding curve parameters (required for new contract)
   const [targetSupply, setTargetSupply] = useState<number>();
+  const [virtualLiquidity, setVirtualLiquidity] = useState<number>();
+  const [curveExponent, setCurveExponent] = useState<number>(2);
 
   // Internal state
   const [isUploading, setIsUploading] = useState(false);
@@ -48,7 +45,7 @@ export function CreateFungibleAsset() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const disableCreateAssetButton =
-    !name || !symbol || !maxSupply || !decimal || !projectURL || !maxMintPerAccount || !account || isUploading;
+    !name || !symbol || !maxSupply || !decimal || !projectURL || !maxMintPerAccount || !targetSupply || !virtualLiquidity || !account || isUploading;
 
   // On create asset button clicked
   const onCreateAsset = async () => {
@@ -82,12 +79,10 @@ export function CreateFungibleAsset() {
           decimal: Number(decimal),
           iconURL,
           projectURL,
-          mintFeePerFA,
-          mintForMyself,
-          maxMintPerAccount,
-          bondingCurveMode,
-          virtualLiquidity,
-          targetSupply,
+          targetSupply: targetSupply!,
+          virtualLiquidity: virtualLiquidity!,
+          curveExponent,
+          maxMintPerAccount: maxMintPerAccount || 0,
         }),
       );
 
@@ -237,63 +232,42 @@ export function CreateFungibleAsset() {
             type="text"
           />
 
-          <LabeledInput
-            id="mint-fee"
-            label="Mint fee per fungible asset in APT"
-            tooltip="The fee cost for the minter to pay to mint one full unit of an asset, denominated in APT. For example, if a user mints 10 assets in a single transaction, they are charged 10x the mint fee."
-            onChange={(e) => setMintFeePerFA(Number(e.target.value))}
-            disabled={isUploading || !account}
-            type="number"
-          />
-
-          <LabeledInput
-            id="for-myself"
-            label="Mint for myself"
-            tooltip="How many assets in full unit to mint right away and send to your address."
-            onChange={(e) => setMintForMyself(Number(e.target.value))}
-            disabled={isUploading || !account}
-            type="number"
-          />
-
           <Card>
             <CardHeader>
               <CardTitle>Bonding Curve Settings</CardTitle>
               <CardDescription>Configure bonding curve parameters for dynamic pricing</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="bonding-curve-mode"
-                  checked={bondingCurveMode}
-                  onChange={(e) => setBondingCurveMode(e.target.checked)}
-                  disabled={isUploading || !account}
-                  className="rounded"
-                />
-                <Label htmlFor="bonding-curve-mode">Enable Bonding Curve Mode</Label>
-              </div>
+              <LabeledInput
+                id="target-supply"
+                label="Target Supply"
+                tooltip="Target supply when bonding curve becomes inactive"
+                required
+                onChange={(e) => setTargetSupply(Number(e.target.value))}
+                disabled={isUploading || !account}
+                type="number"
+              />
               
-              {bondingCurveMode && (
-                <>
-                  <LabeledInput
-                    id="virtual-liquidity"
-                    label="Virtual Liquidity (APT)"
-                    tooltip="Initial virtual liquidity for the bonding curve in APT"
-                    onChange={(e) => setVirtualLiquidity(Number(e.target.value))}
-                    disabled={isUploading || !account}
-                    type="number"
-                  />
-                  
-                  <LabeledInput
-                    id="target-supply"
-                    label="Target Supply"
-                    tooltip="Target supply when bonding curve becomes inactive"
-                    onChange={(e) => setTargetSupply(Number(e.target.value))}
-                    disabled={isUploading || !account}
-                    type="number"
-                  />
-                </>
-              )}
+              <LabeledInput
+                id="virtual-liquidity"
+                label="Virtual Liquidity (APT)"
+                tooltip="Initial virtual liquidity for the bonding curve in APT"
+                required
+                onChange={(e) => setVirtualLiquidity(Number(e.target.value))}
+                disabled={isUploading || !account}
+                type="number"
+              />
+              
+              <LabeledInput
+                id="curve-exponent"
+                label="Curve Exponent"
+                tooltip="Exponent for the bonding curve (typically 2 for quadratic)"
+                required
+                onChange={(e) => setCurveExponent(Number(e.target.value))}
+                disabled={isUploading || !account}
+                type="number"
+                defaultValue="2"
+              />
             </CardContent>
           </Card>
 

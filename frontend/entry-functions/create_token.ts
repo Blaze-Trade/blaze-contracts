@@ -13,13 +13,10 @@ export type CreateTokenArguments = {
   decimal: number; // How many 0's constitute one full unit of the asset. For example, APT has 8.
   iconURL: string; // The asset icon URL
   projectURL: string; // Your project URL (i.e https://mydomain.com)
-  mintFeePerFA?: number; // The fee cost for the minter to pay to mint one full unit of an asset, denominated in APT. For example, if a user mints 10 assets in a single transaction, they are charged 10x the mint fee.
-  mintForMyself?: number; // How many assets in full unit to mint right away and send to the signer address.
+  targetSupply: number; // Target supply for bonding curve
+  virtualLiquidity: number; // Virtual liquidity for bonding curve (in APT)
+  curveExponent: number; // Curve exponent for bonding curve (typically 2)
   maxMintPerAccount?: number; // The maximum amount in full unit that any single individual address can mint
-  // New bonding curve parameters
-  bondingCurveMode: boolean; // Whether to use bonding curve mode
-  virtualLiquidity?: number; // Virtual liquidity for bonding curve (in APT)
-  targetSupply?: number; // Target supply for bonding curve
 };
 
 export const createToken = (args: CreateTokenArguments): InputTransactionData => {
@@ -30,12 +27,10 @@ export const createToken = (args: CreateTokenArguments): InputTransactionData =>
     decimal, 
     iconURL, 
     projectURL, 
-    mintFeePerFA, 
-    mintForMyself, 
-    maxMintPerAccount,
-    bondingCurveMode,
+    targetSupply,
     virtualLiquidity,
-    targetSupply
+    curveExponent,
+    maxMintPerAccount
   } = args;
   
   return {
@@ -43,23 +38,16 @@ export const createToken = (args: CreateTokenArguments): InputTransactionData =>
       function: `${import.meta.env.VITE_MODULE_ADDRESS}::launchpad::create_token`,
       typeArguments: [],
       functionArguments: [
-        convertAmountFromHumanReadableToOnChain(maxSupply, decimal),
-        name,
-        symbol,
-        decimal,
-        iconURL,
-        projectURL,
-        mintFeePerFA
-          ? convertAmountFromOnChainToHumanReadable(
-              convertAmountFromHumanReadableToOnChain(mintFeePerFA, APT_DECIMALS),
-              decimal,
-            )
-          : 0,
-        mintForMyself ? convertAmountFromHumanReadableToOnChain(mintForMyself, decimal) : 0,
-        maxMintPerAccount ? convertAmountFromHumanReadableToOnChain(maxMintPerAccount, decimal) : 0,
-        bondingCurveMode,
-        virtualLiquidity ? convertAmountFromHumanReadableToOnChain(virtualLiquidity, APT_DECIMALS) : 0,
-        targetSupply ? convertAmountFromHumanReadableToOnChain(targetSupply, decimal) : 0,
+        convertAmountFromHumanReadableToOnChain(maxSupply, decimal), // max_supply: Option<u128>
+        name, // name: String
+        symbol, // symbol: String
+        decimal, // decimals: u8
+        iconURL, // icon_uri: String
+        projectURL, // project_uri: String
+        convertAmountFromHumanReadableToOnChain(targetSupply, decimal), // target_supply: u64
+        convertAmountFromHumanReadableToOnChain(virtualLiquidity, APT_DECIMALS), // virtual_liquidity: u64
+        curveExponent, // curve_exponent: u64
+        maxMintPerAccount > 0 ? convertAmountFromHumanReadableToOnChain(maxMintPerAccount, decimal) : 0, // mint_limit_per_addr: Option<u64>
       ],
     },
   };
