@@ -1162,208 +1162,219 @@ module blaze_token_launchpad::launchpad {
         coin::destroy_mint_cap(mint_cap);
     }
 
-    // #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
-    // fun test_sell_token_price_decreases(
-    //     aptos_framework: &signer, sender: &signer
-    // ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
-    //     let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-    //     let sender_addr = signer::address_of(sender);
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_sell_token_price_decreases(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
 
-    //     init_module(sender);
-    //     account::create_account_for_test(sender_addr);
-    //     coin::register<aptos_coin::AptosCoin>(sender);
+        init_module(sender);
+        test_account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
 
-    //     // Create token with bonding curve
-    //     create_token(
-    //         sender,
-    //         option::some(1000000),
-    //         string::utf8(b"SELL_TOKEN"),
-    //         string::utf8(b"SELL"),
-    //         8,
-    //         string::utf8(b"icon_url"),
-    //         string::utf8(b"project_url"),
-    //         1000000,
-    //         1000000,
-    //         2,
-    //         option::some(100000)
-    //     );
+        // Initialize resource account for liquidity management
+        initialize_resource_account(sender, b"test_seed");
 
-    //     let registry = get_registry();
-    //     let fa_obj = registry[registry.length() - 1];
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
 
-    //     // Buy tokens to increase supply
-    //     let buy_amount = 1000;
-    //     let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
-    //     aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
-    //     buy_token(sender, fa_obj, buy_amount);
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
 
-    //     // Get initial sell price
-    //     let initial_sell_price = get_bonding_curve_sell_payout(fa_obj, 1000);
+        // Buy tokens to increase supply
+        let buy_amount = 1000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
 
-    //     // Sell some tokens
-    //     let sell_amount = 1;
-    //     let sell_payout = get_bonding_curve_sell_payout(fa_obj, sell_amount);
-    //     // Ensure contract has APT balance for payout
-    //     aptos_coin::mint(aptos_framework, sender_addr, sell_payout);
-    //     sell_token(sender, fa_obj, sell_amount);
+        // Get initial sell price
+        let initial_sell_price = get_bonding_curve_sell_payout(fa_obj, 1000);
 
-    //     // Get sell price after selling
-    //     let sell_price_after = get_bonding_curve_sell_payout(fa_obj, buy_amount - sell_amount);
+        // Sell some tokens
+        let sell_amount = 1;
+        let sell_payout = get_bonding_curve_sell_payout(fa_obj, sell_amount);
+        // Fund the resource account for liquidity
+        let resource_account_addr = get_resource_account_address();
+        aptos_coin::mint(aptos_framework, resource_account_addr, sell_payout);
+        sell_token(sender, fa_obj, sell_amount);
 
-    //     // Price should have decreased (less payout for same amount)
-    //     assert!(sell_price_after < initial_sell_price, 70);
+        // Get sell price after selling
+        let sell_price_after = get_bonding_curve_sell_payout(fa_obj, buy_amount - sell_amount);
 
-    //     coin::destroy_burn_cap(burn_cap);
-    //     coin::destroy_mint_cap(mint_cap);
-    // }
+        // Price should have decreased (less payout for same amount)
+        assert!(sell_price_after < initial_sell_price, 70);
 
-    // #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
-    // fun test_sell_token_insufficient_balance(
-    //     aptos_framework: &signer, sender: &signer
-    // ) acquires Registry {
-    //     let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-    //     let sender_addr = signer::address_of(sender);
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
 
-    //     init_module(sender);
-    //     account::create_account_for_test(sender_addr);
-    //     coin::register<aptos_coin::AptosCoin>(sender);
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_sell_token_insufficient_balance(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
 
-    //     // Create token with bonding curve
-    //     create_token(
-    //         sender,
-    //         option::some(1000000),
-    //         string::utf8(b"SELL_TOKEN"),
-    //         string::utf8(b"SELL"),
-    //         8,
-    //         string::utf8(b"icon_url"),
-    //         string::utf8(b"project_url"),
-    //         1000000,
-    //         1000000,
-    //         2,
-    //         option::some(100000)
-    //     );
+        init_module(sender);
+        account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
 
-    //     let registry = get_registry();
-    //     let fa_obj = registry[registry.length() - 1];
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
 
-    //     // Try to sell without having any tokens (should fail)
-    //     // This test verifies the insufficient balance check
-    //     let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
-    //     assert!(user_balance == 0, 80); // User has no tokens
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
 
-    //     coin::destroy_burn_cap(burn_cap);
-    //     coin::destroy_mint_cap(mint_cap);
-    // }
+        // Try to sell without having any tokens (should fail)
+        // This test verifies the insufficient balance check
+        let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
+        assert!(user_balance == 0, 80); // User has no tokens
 
-    // #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
-    // fun test_sell_token_after_target_reached(
-    //     aptos_framework: &signer, sender: &signer
-    // ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
-    //     let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-    //     let sender_addr = signer::address_of(sender);
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
 
-    //     init_module(sender);
-    //     account::create_account_for_test(sender_addr);
-    //     coin::register<aptos_coin::AptosCoin>(sender);
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_sell_token_after_target_reached(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
 
-    //     // Create token with low target supply
-    //     create_token(
-    //         sender,
-    //         option::some(10000),
-    //         string::utf8(b"SELL_TOKEN"),
-    //         string::utf8(b"SELL"),
-    //         8,
-    //         string::utf8(b"icon_url"),
-    //         string::utf8(b"project_url"),
-    //         5000, // low target supply
-    //         1000000,
-    //         2,
-    //         option::some(100000)
-    //     );
+        init_module(sender);
+        test_account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
 
-    //     let registry = get_registry();
-    //     let fa_obj = registry[registry.length() - 1];
+        // Initialize resource account for liquidity management
+        initialize_resource_account(sender, b"test_seed");
 
-    //     // Buy tokens to reach target
-    //     let buy_amount = 5000;
-    //     let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
-    //     aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
-    //     buy_token(sender, fa_obj, buy_amount);
+        // Create token with low target supply
+        create_token(
+            sender,
+            option::some(10000),
+            string::utf8(b"SELL_TOKEN"),
+            string::utf8(b"SELL"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            5000, // low target supply
+            1000000,
+            2,
+            option::some(100000)
+        );
 
-    //     // Verify bonding curve is deactivated
-    //     let curve = get_bonding_curve(fa_obj);
-    //     assert!(curve.is_active == false, 90);
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
 
-    //     // Try to sell tokens (should fail because bonding curve is inactive)
-    //     let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
-    //     assert!(user_balance == buy_amount, 91); // User still has tokens
+        // Buy tokens to reach target
+        let buy_amount = 5000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
 
-    //     coin::destroy_burn_cap(burn_cap);
-    //     coin::destroy_mint_cap(mint_cap);
-    // }
+        // Verify bonding curve is deactivated
+        let curve = get_bonding_curve(fa_obj);
+        assert!(curve.is_active == false, 90);
 
-    // #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
-    // fun test_liquidity_pool_functionality(
-    //     aptos_framework: &signer, sender: &signer
-    // ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool {
-    //     let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-    //     let sender_addr = signer::address_of(sender);
+        // Try to sell tokens (should fail because bonding curve is inactive)
+        let user_balance = primary_fungible_store::balance(sender_addr, fa_obj);
+        assert!(user_balance == buy_amount, 91); // User still has tokens
 
-    //     init_module(sender);
-    //     account::create_account_for_test(sender_addr);
-    //     coin::register<aptos_coin::AptosCoin>(sender);
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
 
-    //     // Create token with bonding curve
-    //     create_token(
-    //         sender,
-    //         option::some(1000000),
-    //         string::utf8(b"LIQUIDITY_TOKEN"),
-    //         string::utf8(b"LIQ"),
-    //         8,
-    //         string::utf8(b"icon_url"),
-    //         string::utf8(b"project_url"),
-    //         1000000,
-    //         1000000,
-    //         2,
-    //         option::some(100000)
-    //     );
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_liquidity_pool_functionality(
+        aptos_framework: &signer, sender: &signer
+    ) acquires Registry, BondingCurve, FAConfig, FAController, LiquidityPool, ResourceAccountCapability, Config {
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        let sender_addr = signer::address_of(sender);
 
-    //     let registry = get_registry();
-    //     let fa_obj = registry[registry.length() - 1];
+        init_module(sender);
+        test_account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
 
-    //     // Check initial liquidity pool state
-    //     let (collected, paid_out) = get_liquidity_pool();
-    //     assert!(collected == 0, 100);
-    //     assert!(paid_out == 0, 101);
-    //     assert!(get_available_liquidity() == 0, 102);
+        // Initialize resource account for liquidity management
+        initialize_resource_account(sender, b"test_seed");
 
-    //     // Buy tokens to add liquidity
-    //     let buy_amount = 1000;
-    //     let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
-    //     aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
-    //     buy_token(sender, fa_obj, buy_amount);
+        // Create token with bonding curve
+        create_token(
+            sender,
+            option::some(1000000),
+            string::utf8(b"LIQUIDITY_TOKEN"),
+            string::utf8(b"LIQ"),
+            8,
+            string::utf8(b"icon_url"),
+            string::utf8(b"project_url"),
+            1000000,
+            1000000,
+            2,
+            option::some(100000)
+        );
 
-    //     // Check liquidity pool after buying
-    //     let (collected_after_buy, paid_out_after_buy) = get_liquidity_pool();
-    //     assert!(collected_after_buy == buy_cost, 103);
-    //     assert!(paid_out_after_buy == 0, 104);
-    //     assert!(get_available_liquidity() == buy_cost, 105);
+        let registry = get_registry();
+        let fa_obj = registry[registry.length() - 1];
 
-    //     // Sell some tokens to test payout
-    //     let sell_amount = 1;
-    //     let sell_payout = get_bonding_curve_sell_payout(fa_obj, sell_amount);
-    //     // Ensure contract has APT balance for payout
-    //     aptos_coin::mint(aptos_framework, sender_addr, sell_payout);
-    //     sell_token(sender, fa_obj, sell_amount);
+        // Check initial liquidity pool state
+        let (collected, paid_out) = get_liquidity_pool();
+        assert!(collected == 0, 100);
+        assert!(paid_out == 0, 101);
+        assert!(get_available_liquidity() == 0, 102);
 
-    //     // Check liquidity pool after selling
-    //     let (collected_after_sell, paid_out_after_sell) = get_liquidity_pool();
-    //     assert!(collected_after_sell == buy_cost, 106);
-    //     assert!(paid_out_after_sell == sell_payout, 107);
-    //     assert!(get_available_liquidity() == buy_cost - sell_payout, 108);
+        // Buy tokens to add liquidity
+        let buy_amount = 1000;
+        let buy_cost = get_bonding_curve_mint_cost(fa_obj, buy_amount);
+        aptos_coin::mint(aptos_framework, sender_addr, buy_cost);
+        buy_token(sender, fa_obj, buy_amount);
 
-    //     coin::destroy_burn_cap(burn_cap);
-    //     coin::destroy_mint_cap(mint_cap);
-    // }
+        // Check liquidity pool after buying
+        let (collected_after_buy, paid_out_after_buy) = get_liquidity_pool();
+        assert!(collected_after_buy == buy_cost, 103);
+        assert!(paid_out_after_buy == 0, 104);
+        assert!(get_available_liquidity() == buy_cost, 105);
+
+        // Sell some tokens to test payout
+        let sell_amount = 1;
+        let sell_payout = get_bonding_curve_sell_payout(fa_obj, sell_amount);
+        // Fund the resource account for liquidity
+        let resource_account_addr = get_resource_account_address();
+        aptos_coin::mint(aptos_framework, resource_account_addr, sell_payout);
+        sell_token(sender, fa_obj, sell_amount);
+
+        // Check liquidity pool after selling
+        let (collected_after_sell, paid_out_after_sell) = get_liquidity_pool();
+        assert!(collected_after_sell == buy_cost, 106);
+        assert!(paid_out_after_sell == sell_payout, 107);
+        assert!(get_available_liquidity() == buy_cost - sell_payout, 108);
+
+        coin::destroy_burn_cap(burn_cap);
+        coin::destroy_mint_cap(mint_cap);
+    }
 }
 
