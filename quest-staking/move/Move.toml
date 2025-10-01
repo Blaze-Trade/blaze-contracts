@@ -1,0 +1,12 @@
+[package]
+name = "QuestStaking"
+version = "1.0.0"
+authors = []
+
+[addresses]
+quest_staking_addr = "0x123"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework" }
+
+[dev-dependencies]
