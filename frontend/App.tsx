@@ -3,6 +3,7 @@ import { RouterProvider, createBrowserRouter, Outlet } from "react-router-dom";
 import { Mint } from "@/pages/Mint";
 import { CreateFungibleAsset } from "@/pages/CreateFungibleAsset";
 import { AllFungibleAssets } from "@/pages/AllFungibleAssets";
+import { QuestManagement } from "@/pages/QuestManagement";
 
 function Layout() {
   return (
@@ -23,6 +24,10 @@ const router = createBrowserRouter([
       {
         path: "create-asset",
         element: <CreateFungibleAsset />,
+      },
+      {
+        path: "quests",
+        element: <QuestManagement />,
       },
       {
         path: "/",
