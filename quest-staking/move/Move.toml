@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-quest_staking_addr = "0x123"
+quest_staking_addr = "0x22d710758f35e3de12a5457419c356d97b36d766cf802a5d15b092cb231d4e1d"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework" }
