@@ -4,6 +4,7 @@ This folder contains documentation for the Blaze contracts.
 
 - `launchpad.md`: Detailed documentation for the current `blaze_token_launchpad::launchpad` Move module (V1).
 - `PRD-launchpad-v2.md`: Product Requirements Document for the enhanced launchpad platform (V2) with Bancor curves, enhanced metadata, and Hyperion DEX integration.
+- `V2-IMPLEMENTATION-STATUS.md`: Current implementation status, completed features, and pending work for V2.
 
 ## Project Overview
 
