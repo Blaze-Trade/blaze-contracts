@@ -4,7 +4,7 @@ module blaze_token_launchpad::launchpad_v2 {
     use std::string::String;
     use std::vector;
 
-    use aptos_std::table::{Self, Table};
+    use aptos_std::table::Table;
 
     #[test_only]
     use std::string;
@@ -16,7 +16,7 @@ module blaze_token_launchpad::launchpad_v2 {
     use aptos_framework::aptos_account;
     use aptos_framework::event;
     use aptos_framework::fungible_asset::{Self, Metadata};
-    use aptos_framework::object::{Self, Object, ObjectCore};
+    use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::timestamp;
@@ -470,7 +470,7 @@ module blaze_token_launchpad::launchpad_v2 {
         reserve_ratio: u64,
         initial_apt_reserve: u64,
         market_cap_threshold_usd: Option<u64>
-    ) acquires Registry {
+    ) acquires Registry, ResourceAccountCapability {
         let sender_addr = signer::address_of(sender);
         
         // Validate inputs
@@ -1121,6 +1121,24 @@ module blaze_token_launchpad::launchpad_v2 {
     use aptos_framework::account as test_account;
 
     #[test_only]
+    struct AptosCoinCap has key {
+        burn_cap: coin::BurnCapability<aptos_coin::AptosCoin>,
+        mint_cap: coin::MintCapability<aptos_coin::AptosCoin>
+    }
+
+    #[test_only]
+    fun setup_test(aptos_framework: &signer, sender: &signer): address {
+        timestamp::set_time_has_started_for_testing(aptos_framework);
+        let (burn_cap, mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
+        move_to(aptos_framework, AptosCoinCap { burn_cap, mint_cap });
+        let sender_addr = signer::address_of(sender);
+        test_account::create_account_for_test(sender_addr);
+        coin::register<aptos_coin::AptosCoin>(sender);
+        init_module(sender);
+        sender_addr
+    }
+
+    #[test_only]
     /// Helper function to create a test pool
     fun create_test_pool(
         sender: &signer,
@@ -1128,7 +1146,7 @@ module blaze_token_launchpad::launchpad_v2 {
         ticker: String,
         reserve_ratio: u64,
         initial_reserve: u64
-    ): Object<Metadata> acquires Registry {
+    ): Object<Metadata> acquires Registry, ResourceAccountCapability {
         create_pool(
             sender,
             name,
@@ -1152,9 +1170,7 @@ module blaze_token_launchpad::launchpad_v2 {
 
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_init_module(aptos_framework: &signer, sender: &signer) {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        
-        init_module(sender);
+        setup_test(aptos_framework, sender);
         
         // Verify all global resources are initialized
         assert!(exists<Registry>(@blaze_token_launchpad), 1);
@@ -1169,13 +1185,8 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_create_pool_basic(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+    ) acquires Registry, ResourceAccountCapability {
+        let sender_addr = setup_test(aptos_framework, sender);
         
         // Mint APT for initial reserve
         aptos_coin::mint(aptos_framework, sender_addr, 1000000000);
@@ -1199,12 +1210,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         // Mint APT for initial reserve and buy
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
@@ -1232,12 +1238,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         // Mint APT
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
@@ -1269,13 +1270,8 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_bancor_calculations(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+    ) acquires Registry, Pool, ResourceAccountCapability {
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
         
@@ -1301,12 +1297,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 5000000000);
         
@@ -1334,12 +1325,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         // Get treasury address
         let treasury = get_treasury();
@@ -1376,9 +1362,7 @@ module blaze_token_launchpad::launchpad_v2 {
         admin: &signer,
         new_admin: address
     ) acquires Config {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        
-        init_module(admin);
+        setup_test(aptos_framework, admin);
         
         let initial_admin = get_admin();
         assert!(initial_admin == signer::address_of(admin), 70);
@@ -1395,9 +1379,7 @@ module blaze_token_launchpad::launchpad_v2 {
         admin: &signer,
         new_treasury: address
     ) acquires Config, FeeConfig {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        
-        init_module(admin);
+        setup_test(aptos_framework, admin);
         
         let initial_treasury = get_treasury();
         
@@ -1413,9 +1395,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         admin: &signer
     ) acquires Config, FeeConfig {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        
-        init_module(admin);
+        setup_test(aptos_framework, admin);
         
         let (initial_buy, initial_sell) = get_fees();
         
@@ -1431,13 +1411,8 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_pool_settings(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, Config {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+    ) acquires Registry, Pool, Config, ResourceAccountCapability {
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
         
@@ -1467,12 +1442,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
         
@@ -1497,12 +1467,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
         
@@ -1524,12 +1489,7 @@ module blaze_token_launchpad::launchpad_v2 {
         aptos_framework: &signer,
         sender: &signer
     ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
         
@@ -1541,21 +1501,19 @@ module blaze_token_launchpad::launchpad_v2 {
             100000000
         );
         
+        // Fast forward time to make deadline in the past
+        timestamp::fast_forward_seconds(100);
+        
         // Set deadline in the past - should fail
-        buy(sender, pool_id, 10000000, 0, 0);
+        buy(sender, pool_id, 10000000, 0, 50);
     }
 
     #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
     fun test_multiple_pools(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+    ) acquires Registry, Pool, ResourceAccountCapability {
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 5000000000);
         
@@ -1575,13 +1533,8 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_reserve_ratios(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool {
-        let (_burn_cap, _mint_cap) = aptos_coin::initialize_for_test(aptos_framework);
-        let sender_addr = signer::address_of(sender);
-        
-        init_module(sender);
-        test_account::create_account_for_test(sender_addr);
-        coin::register<aptos_coin::AptosCoin>(sender);
+    ) acquires Registry, Pool, ResourceAccountCapability {
+        let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 5000000000);
         
