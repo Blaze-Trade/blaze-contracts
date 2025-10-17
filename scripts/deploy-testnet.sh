@@ -29,19 +29,27 @@ else
 fi
 
 echo ""
-echo "📍 Using profile: testnet"
-ACCOUNT_ADDRESS=$(aptos config show-profiles --profile testnet | grep "account" | awk '{print $2}')
+# Get profile name (default: testnet)
+PROFILE=${APTOS_PROFILE:-testnet}
+echo "📍 Using profile: $PROFILE"
+
+# Get account address (remove quotes and comma, add 0x prefix if missing)
+ACCOUNT_ADDRESS=$(aptos config show-profiles --profile $PROFILE | grep "account" | awk '{print $2}' | tr -d '",')
+# Add 0x prefix if not present
+if [[ ! $ACCOUNT_ADDRESS == 0x* ]]; then
+    ACCOUNT_ADDRESS="0x${ACCOUNT_ADDRESS}"
+fi
 echo "📍 Account address: $ACCOUNT_ADDRESS"
 echo ""
 
 # Fund the account from testnet faucet
 echo "💰 Funding account from testnet faucet..."
-aptos account fund-with-faucet --profile testnet --account $ACCOUNT_ADDRESS --amount 500000000 || echo "⚠️  Faucet might be rate-limited, continuing anyway..."
+aptos account fund-with-faucet --profile $PROFILE --account $ACCOUNT_ADDRESS --amount 500000000 || echo "⚠️  Faucet might be rate-limited, continuing anyway..."
 echo ""
 
 # Check balance
 echo "💳 Checking account balance..."
-aptos account list --profile testnet --account $ACCOUNT_ADDRESS
+aptos account list --profile $PROFILE --account $ACCOUNT_ADDRESS
 echo ""
 
 # Compile the contract
@@ -59,7 +67,7 @@ echo ""
 echo "📦 Deploying to testnet..."
 echo "⚠️  You will be prompted to confirm the transaction"
 aptos move publish \
-    --profile testnet \
+    --profile $PROFILE \
     --named-addresses blaze_token_launchpad=$ACCOUNT_ADDRESS \
     --assume-yes
 
