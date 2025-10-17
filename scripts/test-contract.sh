@@ -34,7 +34,7 @@ echo "4. Get APT/USD Price"
 echo "5. Get All Pools"
 echo "6. Get Pool Balance"
 echo "7. Get Fees"
-echo "8. Create a Test Pool"
+echo "8. Create a Test Pool (TypeScript Required)"
 echo "9. Update Oracle Price (Admin)"
 echo "10. View Account Resources"
 echo "11. Exit"
@@ -72,6 +72,14 @@ case $choice in
             --profile $PROFILE \
             --function-id ${ACCOUNT_ADDRESS}::launchpad_v2::get_pools
         ;;
+    6)
+        echo "📞 Calling get_pool_balance()..."
+        read -p "Enter pool object address: " pool_addr
+        aptos move view \
+            --profile $PROFILE \
+            --function-id ${ACCOUNT_ADDRESS}::launchpad_v2::get_pool_balance \
+            --args address:$pool_addr
+        ;;
     7)
         echo "📞 Calling get_fees()..."
         aptos move view \
@@ -79,28 +87,28 @@ case $choice in
             --function-id ${ACCOUNT_ADDRESS}::launchpad_v2::get_fees
         ;;
     8)
-        echo "🔨 Creating a test pool..."
-        echo "This will create a pool named 'Test Token' with ticker 'TEST'"
-        read -p "Proceed? (y/n): " confirm
-        if [ "$confirm" = "y" ]; then
-            aptos move run \
-                --profile $PROFILE \
-                --function-id ${ACCOUNT_ADDRESS}::launchpad_v2::create_pool \
-                --args \
-                    string:"Test Token" \
-                    string:"TEST" \
-                    string:"https://example.com/test.png" \
-                    "vector<string>:Test token for testing" \
-                    "vector<string>:https://example.com" \
-                    "vector<string>:@testtoken" \
-                    "vector<string>:t.me/testtoken" \
-                    "vector<string>:discord.gg/testtoken" \
-                    "vector<u128>:1000000000000" \
-                    u8:8 \
-                    u64:50 \
-                    u64:100000000 \
-                    "vector<u64>:7500000"
-        fi
+        echo "🔨 Create a Test Pool"
+        echo "════════════════════════════════════════════════"
+        echo ""
+        echo "⚠️  IMPORTANT: The Aptos CLI cannot call create_pool!"
+        echo ""
+        echo "📋 Reason:"
+        echo "   The function uses Option<T> parameters which the CLI"
+        echo "   does not support (only basic types like string, u64, etc.)"
+        echo ""
+        echo "✅ Solution: Use the TypeScript SDK script instead"
+        echo ""
+        echo "📝 Steps to create a pool:"
+        echo "   1. cd scripts"
+        echo "   2. npm install"
+        echo "   3. npm run create-pool"
+        echo ""
+        echo "   OR directly:"
+        echo "   ts-node scripts/create-pool.ts"
+        echo ""
+        echo "📚 See CLI_LIMITATIONS.md for detailed explanation"
+        echo ""
+        read -p "Press Enter to continue..."
         ;;
     9)
         echo "🔧 Updating oracle price (Admin only)..."

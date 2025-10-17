@@ -1,0 +1,18 @@
+{
+  "name": "blaze-launchpad-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Scripts for interacting with Blaze Launchpad V2",
+  "scripts": {
+    "create-pool": "AUTO_MODE=true ts-node create-pool.ts"
+  },
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "^1.0.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}

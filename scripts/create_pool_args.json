@@ -1,0 +1,58 @@
+{
+  "function_id": "REPLACE_WITH_ADDRESS::launchpad_v2::create_pool",
+  "type_args": [],
+  "args": [
+    {
+      "type": "string",
+      "value": "Test Token"
+    },
+    {
+      "type": "string", 
+      "value": "TEST"
+    },
+    {
+      "type": "string",
+      "value": "https://example.com/test.png"
+    },
+    {
+      "type": "vector<string>",
+      "value": ["Test token for testing"]
+    },
+    {
+      "type": "vector<string>",
+      "value": ["https://example.com"]
+    },
+    {
+      "type": "vector<string>",
+      "value": ["@testtoken"]
+    },
+    {
+      "type": "vector<string>",
+      "value": ["t.me/testtoken"]
+    },
+    {
+      "type": "vector<string>",
+      "value": ["discord.gg/testtoken"]
+    },
+    {
+      "type": "vector<u128>",
+      "value": [1000000000000]
+    },
+    {
+      "type": "u8",
+      "value": 8
+    },
+    {
+      "type": "u64",
+      "value": 50
+    },
+    {
+      "type": "u64",
+      "value": 100000000
+    },
+    {
+      "type": "vector<u64>",
+      "value": [7500000]
+    }
+  ]
+}
