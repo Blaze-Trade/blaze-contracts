@@ -91,6 +91,11 @@ The contract address is automatically set during compilation, but verify:
 [addresses]
 blaze_token_launchpad = "_"
 ```
+e.g
+```toml
+[addresses]
+blaze_token_launchpad = "0xf2ca7e5f4e8fb07ea86f701ca1fd1da98d5c41d2f87979be0723a13da3bca125"
+```
 
 ### Step 4: Compile Contract
 
@@ -113,6 +118,14 @@ Expected: `Test result: OK. Total tests: 28; passed: 28; failed: 0`
 aptos move publish \
     --profile testnet \
     --named-addresses blaze_token_launchpad=<YOUR_ADDRESS> \
+    --assume-yes
+```
+
+e.g
+```bash
+aptos move publish \
+    --profile blazev2-testnet \
+    --named-addresses blaze_token_launchpad=0xf2ca7e5f4e8fb07ea86f701ca1fd1da98d5c41d2f87979be0723a13da3bca125 \
     --assume-yes
 ```
 

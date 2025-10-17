@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-blaze_token_launchpad = "0x9239ac2bb7bb998c6d19d1b309dd2093f130185710415832caf30bf0c99d678a"
+blaze_token_launchpad = "0xf2ca7e5f4e8fb07ea86f701ca1fd1da98d5c41d2f87979be0723a13da3bca125"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework"}
