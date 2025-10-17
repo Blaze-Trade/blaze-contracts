@@ -1,6 +1,41 @@
 # Scripts Usage Guide
 
-## Using Custom Profile Names
+## TypeScript Scripts (Recommended)
+
+### Create Pool
+```bash
+cd scripts
+npm run create-pool
+```
+
+Customize with environment variables:
+```bash
+TOKEN_NAME="My Token" TOKEN_TICKER="MTK" TOKEN_INITIAL_RESERVE="0.1" npm run create-pool
+```
+
+### Buy Tokens
+```bash
+POOL_ID=0x... APT_AMOUNT=0.1 npm run buy
+```
+
+### Sell Tokens
+```bash
+POOL_ID=0x... TOKEN_AMOUNT=100 npm run sell
+```
+
+### Get Pool ID
+After creating a pool, get its ID:
+```bash
+aptos move view \
+  --function-id 0xCONTRACT_ADDRESS::launchpad_v2::get_pools \
+  --profile blazev2-testnet
+```
+
+---
+
+## Shell Scripts (Legacy)
+
+### Using Custom Profile Names
 
 Both scripts now support custom Aptos CLI profiles!
 
