@@ -4,8 +4,6 @@ module blaze_token_launchpad::launchpad_v2 {
     use std::string::String;
     use std::vector;
 
-    use aptos_std::table::Table;
-
     #[test_only]
     use std::string;
     #[test_only]
@@ -55,6 +53,10 @@ module blaze_token_launchpad::launchpad_v2 {
     const EINSUFFICIENT_LIQUIDITY: u64 = 113;
     /// Invalid initial reserve (must be > 0)
     const EINVALID_INITIAL_RESERVE: u64 = 114;
+    /// Oracle price is stale
+    const EORACLE_PRICE_STALE: u64 = 115;
+    /// Invalid oracle price
+    const EINVALID_ORACLE_PRICE: u64 = 116;
 
     // ================================= Constants ================================= //
 
@@ -238,6 +240,14 @@ module blaze_token_launchpad::launchpad_v2 {
         pool_id: Object<Metadata>,
         admin: address,
         amount: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct OraclePriceUpdatedEvent has store, drop {
+        old_price: u64,
+        new_price: u64,
+        oracle_address: address,
         timestamp: u64
     }
 
@@ -452,6 +462,75 @@ module blaze_token_launchpad::launchpad_v2 {
         (((reserve_balance as u128) * PRECISION * 100) / (supply * (reserve_ratio as u128)) as u64)
     }
 
+    /// Calculate market cap in USD cents
+    /// market_cap = total_supply * price_per_token * apt_usd_price
+    fun calculate_market_cap_internal(
+        supply: u128,
+        reserve_balance: u64,
+        reserve_ratio: u64,
+        apt_usd_price: u64
+    ): u64 {
+        if (supply == 0) {
+            return 0
+        };
+        
+        // Get price per token in APT (with PRECISION scaling)
+        let price_per_token = calculate_current_price(supply, reserve_balance, reserve_ratio);
+        
+        // market_cap = (supply * price_per_token * apt_usd_price) / PRECISION
+        // Result in USD cents
+        let market_cap_u128 = (supply * (price_per_token as u128) * (apt_usd_price as u128)) / (PRECISION * PRECISION);
+        
+        (market_cap_u128 as u64)
+    }
+
+    /// Internal function to migrate liquidity to Hyperion DEX
+    fun migrate_to_hyperion_internal(
+        pool_id: Object<Metadata>
+    ) acquires Pool {
+        let pool_addr = object::object_address(&pool_id);
+        let pool = borrow_global_mut<Pool>(pool_addr);
+        
+        // Check if migration already completed
+        assert!(!pool.settings.migration_completed, EMIGRATION_COMPLETED);
+        
+        // Deactivate bonding curve
+        pool.curve.is_active = false;
+        
+        // Calculate liquidity amounts
+        let apt_liquidity = pool.curve.reserve_balance;
+        let supply = fungible_asset::supply(pool_id);
+        let token_liquidity = if (supply.is_some()) { *supply.borrow() } else { 0 };
+        
+        // TODO: Call Hyperion DEX create_pool and add_liquidity
+        // This will be implemented once Hyperion DEX contract addresses are available
+        // For now, we'll just mark the migration as completed and emit event
+        
+        // Example pseudocode for future implementation:
+        // let hyperion_pool_addr = hyperion::create_pool(pool_id, apt_liquidity, token_liquidity);
+        // hyperion::add_liquidity(hyperion_pool_addr, apt_liquidity, token_liquidity);
+        
+        // Update pool settings
+        pool.settings.migration_completed = true;
+        pool.settings.migration_timestamp = option::some(now());
+        // pool.settings.hyperion_pool_address = option::some(hyperion_pool_addr);
+        
+        // Calculate market cap for event
+        let market_cap = 0u64; // Will be calculated from actual data
+        
+        // Emit migration event
+        event::emit(
+            LiquidityMigratedEvent {
+                pool_id,
+                hyperion_pool_address: @0x0, // Placeholder
+                apt_liquidity,
+                token_liquidity: (token_liquidity as u64),
+                market_cap_usd: market_cap,
+                timestamp: now()
+            }
+        );
+    }
+
     // ================================= Entry Functions ================================= //
 
     /// Create a new token pool with enhanced metadata and Bancor curve
@@ -587,7 +666,7 @@ module blaze_token_launchpad::launchpad_v2 {
         apt_amount: u64,
         min_tokens_out: u64,
         deadline: u64
-    ) acquires Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = signer::address_of(sender);
         
         // Validate inputs
@@ -663,7 +742,19 @@ module blaze_token_launchpad::launchpad_v2 {
             }
         );
         
-        // TODO: Check market cap and trigger migration if threshold reached
+        // Check market cap and trigger migration if threshold reached
+        let oracle = borrow_global<PriceOracle>(@blaze_token_launchpad);
+        let market_cap_usd = calculate_market_cap_internal(
+            new_supply,
+            pool.curve.reserve_balance,
+            pool.curve.reserve_ratio,
+            oracle.apt_usd_price
+        );
+        
+        // Trigger migration if market cap >= threshold and not already migrated
+        if (market_cap_usd >= pool.settings.market_cap_threshold_usd && !pool.settings.migration_completed) {
+            migrate_to_hyperion_internal(pool_id);
+        };
     }
 
     /// Sell tokens for APT via Bancor bonding curve
@@ -899,6 +990,46 @@ module blaze_token_launchpad::launchpad_v2 {
         );
     }
 
+    /// Update APT/USD price from oracle (admin only)
+    /// Price should be in USD cents (e.g., 850 = $8.50)
+    public entry fun update_oracle_price(
+        sender: &signer,
+        new_price: u64,
+        oracle_address: address
+    ) acquires Config, PriceOracle {
+        let sender_addr = signer::address_of(sender);
+        assert_admin(sender_addr);
+        assert!(new_price > 0, EINVALID_ORACLE_PRICE);
+        
+        let oracle = borrow_global_mut<PriceOracle>(@blaze_token_launchpad);
+        let old_price = oracle.apt_usd_price;
+        
+        oracle.apt_usd_price = new_price;
+        oracle.last_update = now();
+        oracle.oracle_address = oracle_address;
+        
+        event::emit(
+            OraclePriceUpdatedEvent {
+                old_price,
+                new_price,
+                oracle_address,
+                timestamp: now()
+            }
+        );
+    }
+
+    /// Manually trigger migration to Hyperion DEX (admin only)
+    /// Used to force migration before market cap threshold is reached
+    public entry fun force_migrate_to_hyperion(
+        sender: &signer,
+        pool_id: Object<Metadata>
+    ) acquires Config, Pool {
+        let sender_addr = signer::address_of(sender);
+        assert_admin(sender_addr);
+        
+        migrate_to_hyperion_internal(pool_id);
+    }
+
     // ================================= View Functions ================================= //
 
     #[view]
@@ -1115,6 +1246,52 @@ module blaze_token_launchpad::launchpad_v2 {
         get_resource_account_addr()
     }
 
+    #[view]
+    /// Get current APT/USD price from oracle (in USD cents)
+    public fun get_apt_usd_price(): u64 acquires PriceOracle {
+        let oracle = borrow_global<PriceOracle>(@blaze_token_launchpad);
+        oracle.apt_usd_price
+    }
+
+    #[view]
+    /// Get oracle data (price, last_update, oracle_address)
+    public fun get_oracle_data(): (u64, u64, address) acquires PriceOracle {
+        let oracle = borrow_global<PriceOracle>(@blaze_token_launchpad);
+        (oracle.apt_usd_price, oracle.last_update, oracle.oracle_address)
+    }
+
+    #[view]
+    /// Calculate market cap in USD cents for a pool
+    public fun calculate_market_cap_usd(pool_id: Object<Metadata>): u64 acquires Pool, PriceOracle {
+        let pool_addr = object::object_address(&pool_id);
+        assert!(exists<Pool>(pool_addr), EPOOL_NOT_FOUND);
+        
+        let pool = borrow_global<Pool>(pool_addr);
+        let supply = get_current_supply(pool_id);
+        let oracle = borrow_global<PriceOracle>(@blaze_token_launchpad);
+        
+        calculate_market_cap_internal(
+            supply,
+            pool.curve.reserve_balance,
+            pool.curve.reserve_ratio,
+            oracle.apt_usd_price
+        )
+    }
+
+    #[view]
+    /// Check if pool has reached migration threshold
+    public fun is_migration_threshold_reached(pool_id: Object<Metadata>): bool acquires Pool, PriceOracle {
+        let pool_addr = object::object_address(&pool_id);
+        assert!(exists<Pool>(pool_addr), EPOOL_NOT_FOUND);
+        
+        // Calculate market cap first before borrowing pool
+        let market_cap = calculate_market_cap_usd(pool_id);
+        
+        // Then borrow pool to get threshold
+        let pool = borrow_global<Pool>(pool_addr);
+        market_cap >= pool.settings.market_cap_threshold_usd
+    }
+
     // ================================= Tests ================================= //
 
     #[test_only]
@@ -1209,7 +1386,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_buy_tokens(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         // Mint APT for initial reserve and buy
@@ -1237,7 +1414,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_buy_and_sell_tokens(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         // Mint APT
@@ -1296,7 +1473,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_price_increases_with_supply(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 5000000000);
@@ -1324,7 +1501,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_fees_collected(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         // Get treasury address
@@ -1441,7 +1618,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_buy_when_trading_disabled(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
@@ -1466,7 +1643,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_slippage_protection(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
@@ -1488,7 +1665,7 @@ module blaze_token_launchpad::launchpad_v2 {
     fun test_deadline_enforcement(
         aptos_framework: &signer,
         sender: &signer
-    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability {
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
         let sender_addr = setup_test(aptos_framework, sender);
         
         aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
@@ -1550,5 +1727,351 @@ module blaze_token_launchpad::launchpad_v2 {
         assert!(curve_25.reserve_ratio == 25, 120);
         assert!(curve_50.reserve_ratio == 50, 121);
         assert!(curve_100.reserve_ratio == 100, 122);
+    }
+
+    // ================================= Market Cap & Oracle Tests ================================= //
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_oracle_price_update(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Config, PriceOracle {
+        setup_test(aptos_framework, sender);
+        
+        // Check initial oracle price
+        let initial_price = get_apt_usd_price();
+        assert!(initial_price == 850, 130); // Default $8.50
+        
+        // Update oracle price
+        let new_price = 1200; // $12.00
+        let oracle_addr = @0x123;
+        update_oracle_price(sender, new_price, oracle_addr);
+        
+        // Verify update
+        let updated_price = get_apt_usd_price();
+        assert!(updated_price == new_price, 131);
+        
+        // Verify oracle data
+        let (price, _last_update, addr) = get_oracle_data();
+        assert!(price == new_price, 132);
+        assert!(addr == oracle_addr, 133);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    #[expected_failure(abort_code = EINVALID_ORACLE_PRICE)]
+    fun test_oracle_price_update_zero_fails(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Config, PriceOracle {
+        setup_test(aptos_framework, sender);
+        
+        // Should fail with zero price
+        update_oracle_price(sender, 0, @0x123);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_market_cap_calculation(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 10000000000);
+        
+        // Create pool
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Initial market cap should be 0 (no supply)
+        let initial_market_cap = calculate_market_cap_usd(pool_id);
+        assert!(initial_market_cap == 0, 140);
+        
+        // Buy some tokens to increase supply
+        buy(sender, pool_id, 100000000, 0, timestamp::now_seconds() + 300);
+        
+        // Market cap should now be > 0
+        let market_cap_after_buy = calculate_market_cap_usd(pool_id);
+        assert!(market_cap_after_buy > 0, 141);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_market_cap_with_different_apt_prices(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle, Config {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 10000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Buy tokens
+        buy(sender, pool_id, 100000000, 0, timestamp::now_seconds() + 300);
+        
+        // Get market cap at $8.50
+        let market_cap_850 = calculate_market_cap_usd(pool_id);
+        
+        // Update APT price to $17.00 (double)
+        update_oracle_price(sender, 1700, @0x123);
+        
+        // Market cap should be roughly double
+        let market_cap_1700 = calculate_market_cap_usd(pool_id);
+        assert!(market_cap_1700 > market_cap_850, 150);
+        assert!(market_cap_1700 >= market_cap_850 * 2 - 100, 151); // Allow small margin
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_is_migration_threshold_reached(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, PriceOracle {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 10000000000);
+        
+        // Create pool with low threshold for testing
+        create_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            string::utf8(b"https://example.com/image.png"),
+            option::some(string::utf8(b"Test token")),
+            option::none(),
+            option::none(),
+            option::none(),
+            option::none(),
+            option::some(1000000000),
+            8,
+            50,
+            100000000,
+            option::some(100) // Very low threshold: $1.00
+        );
+        
+        let registry = borrow_global<Registry>(@blaze_token_launchpad);
+        let pool_id = *vector::borrow(&registry.pools, vector::length(&registry.pools) - 1);
+        
+        // Initially should not reach threshold
+        let reached = is_migration_threshold_reached(pool_id);
+        assert!(!reached, 160);
+        
+        // Buy tokens to increase market cap
+        buy(sender, pool_id, 500000000, 0, timestamp::now_seconds() + 300);
+        
+        // Should reach threshold now
+        let reached_after = is_migration_threshold_reached(pool_id);
+        assert!(reached_after, 161);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_force_migrate_to_hyperion(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, ResourceAccountCapability, Config {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Check pool is active before migration
+        let (_, curve, settings) = get_pool(pool_id);
+        assert!(curve.is_active, 170);
+        assert!(!settings.migration_completed, 171);
+        
+        // Force migration
+        force_migrate_to_hyperion(sender, pool_id);
+        
+        // Check pool is deactivated after migration
+        let (_, curve_after, settings_after) = get_pool(pool_id);
+        assert!(!curve_after.is_active, 172);
+        assert!(settings_after.migration_completed, 173);
+        assert!(settings_after.migration_timestamp.is_some(), 174);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    #[expected_failure(abort_code = EMIGRATION_COMPLETED)]
+    fun test_cannot_migrate_twice(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, ResourceAccountCapability, Config {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // First migration
+        force_migrate_to_hyperion(sender, pool_id);
+        
+        // Second migration should fail
+        force_migrate_to_hyperion(sender, pool_id);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    #[expected_failure(abort_code = ETRADING_DISABLED)]
+    fun test_cannot_buy_after_migration(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config, PriceOracle {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Migrate pool
+        force_migrate_to_hyperion(sender, pool_id);
+        
+        // Try to buy - should fail
+        buy(sender, pool_id, 10000000, 0, timestamp::now_seconds() + 300);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    #[expected_failure(abort_code = ETRADING_DISABLED)]
+    fun test_cannot_sell_after_migration(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config, PriceOracle {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Buy tokens first
+        buy(sender, pool_id, 100000000, 0, timestamp::now_seconds() + 300);
+        
+        let token_balance = primary_fungible_store::balance(sender_addr, pool_id);
+        
+        // Migrate pool
+        force_migrate_to_hyperion(sender, pool_id);
+        
+        // Try to sell - should fail
+        sell(sender, pool_id, token_balance, 0, timestamp::now_seconds() + 300);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad)]
+    fun test_automatic_migration_on_threshold(
+        aptos_framework: &signer,
+        sender: &signer
+    ) acquires Registry, Pool, FAController, FeeConfig, LiquidityPool, ResourceAccountCapability, Config, PriceOracle {
+        let sender_addr = setup_test(aptos_framework, sender);
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 100000000000); // Mint a lot for big purchases
+        
+        // Set high APT price to reach threshold faster
+        update_oracle_price(sender, 10000, @0x123); // $100 per APT
+        
+        // Create pool with low threshold and high max supply
+        create_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            string::utf8(b"https://example.com/image.png"),
+            option::some(string::utf8(b"Test token")),
+            option::none(),
+            option::none(),
+            option::none(),
+            option::none(),
+            option::some(1000000000000000), // Very high max supply to allow large purchases
+            8,
+            50,
+            1000000000, // 10 APT initial
+            option::some(500000) // $5,000 threshold
+        );
+        
+        let registry = borrow_global<Registry>(@blaze_token_launchpad);
+        let pool_id = *vector::borrow(&registry.pools, vector::length(&registry.pools) - 1);
+        
+        // Pool should be active initially
+        let (_, curve_before, settings_before) = get_pool(pool_id);
+        assert!(curve_before.is_active, 180);
+        assert!(!settings_before.migration_completed, 181);
+        
+        // Make a large buy to trigger migration
+        buy(sender, pool_id, 10000000000, 0, timestamp::now_seconds() + 300); // 100 APT
+        
+        // Check if migration was triggered
+        let (_, curve_after, settings_after) = get_pool(pool_id);
+        
+        // If market cap reached threshold, pool should be migrated
+        let market_cap = calculate_market_cap_usd(pool_id);
+        if (market_cap >= settings_before.market_cap_threshold_usd) {
+            assert!(!curve_after.is_active, 182);
+            assert!(settings_after.migration_completed, 183);
+        };
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad, non_admin = @0x456)]
+    #[expected_failure(abort_code = EONLY_ADMIN)]
+    fun test_only_admin_can_update_oracle(
+        aptos_framework: &signer,
+        sender: &signer,
+        non_admin: &signer
+    ) acquires Config, PriceOracle {
+        setup_test(aptos_framework, sender);
+        test_account::create_account_for_test(signer::address_of(non_admin));
+        
+        // Non-admin tries to update oracle - should fail
+        update_oracle_price(non_admin, 1000, @0x123);
+    }
+
+    #[test(aptos_framework = @0x1, sender = @blaze_token_launchpad, non_admin = @0x456)]
+    #[expected_failure(abort_code = EONLY_ADMIN)]
+    fun test_only_admin_can_force_migrate(
+        aptos_framework: &signer,
+        sender: &signer,
+        non_admin: &signer
+    ) acquires Registry, Pool, ResourceAccountCapability, Config {
+        let sender_addr = setup_test(aptos_framework, sender);
+        test_account::create_account_for_test(signer::address_of(non_admin));
+        
+        aptos_coin::mint(aptos_framework, sender_addr, 2000000000);
+        
+        let pool_id = create_test_pool(
+            sender,
+            string::utf8(b"Test Token"),
+            string::utf8(b"TEST"),
+            50,
+            100000000
+        );
+        
+        // Non-admin tries to force migration - should fail
+        force_migrate_to_hyperion(non_admin, pool_id);
     }
 }

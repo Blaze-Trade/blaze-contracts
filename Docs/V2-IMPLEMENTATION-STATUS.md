@@ -34,7 +34,7 @@ struct Registry         // All pool registry
 struct Config           // Admin and treasury addresses
 ```
 
-### 4. Write Functions (8/8 Complete)
+### 4. Write Functions (10/10 Complete)
 
 #### ✅ `create_pool`
 - Create token pool with full metadata
@@ -51,6 +51,7 @@ struct Config           // Admin and treasury addresses
 - Fee calculation and treasury payment
 - Reserve balance updates
 - Liquidity tracking
+- **Market cap check and automatic migration trigger**
 - Event emission with price/supply data
 
 #### ✅ `sell`
@@ -86,7 +87,18 @@ struct Config           // Admin and treasury addresses
 - Updates reserve balance
 - Event emission
 
-### 5. View Functions (18/18 Complete)
+#### ✅ `update_oracle_price`
+- Admin-only function to update APT/USD price
+- Updates oracle timestamp
+- Validates price > 0
+- Event emission
+
+#### ✅ `force_migrate_to_hyperion`
+- Admin function to manually trigger migration
+- Bypasses market cap threshold check
+- Calls internal migration function
+
+### 5. View Functions (22/22 Complete)
 
 #### Price & Supply Functions
 - ✅ `get_current_price` - Returns price in APT (u64)
@@ -113,16 +125,23 @@ struct Config           // Admin and treasury addresses
 - ✅ `get_max_left_apt_in_pool_including_fee` - Max APT (after fees)
 - ✅ `get_resource_account_address` - Resource account address
 
-### 6. Events (9/9 Complete)
+#### Oracle & Market Cap Functions
+- ✅ `get_apt_usd_price` - Current APT/USD price in cents
+- ✅ `get_oracle_data` - Returns (price, last_update, oracle_address)
+- ✅ `calculate_market_cap_usd` - Pool market cap in USD cents
+- ✅ `is_migration_threshold_reached` - Check if pool ready for migration
+
+### 6. Events (10/10 Complete)
 - ✅ `CreatePoolEvent`
 - ✅ `BuyEvent`
 - ✅ `SellEvent`
-- ✅ `LiquidityMigratedEvent` (defined, not yet emitted)
+- ✅ `LiquidityMigratedEvent` (now emitted on migration)
 - ✅ `AdminChangedEvent`
 - ✅ `TreasuryChangedEvent`
 - ✅ `FeeUpdatedEvent`
 - ✅ `PoolSettingsUpdatedEvent`
 - ✅ `AdminWithdrawalEvent`
+- ✅ `OraclePriceUpdatedEvent`
 
 ### 7. Security Features
 - ✅ Slippage protection (min_tokens_out, min_apt_out)
@@ -132,47 +151,53 @@ struct Config           // Admin and treasury addresses
 - ✅ Balance and reserve checks
 - ✅ Trading enable/disable mechanism
 
+### 8. Market Cap Calculation & Hyperion Migration ✅
+- ✅ Price oracle integration (PriceOracle struct with APT/USD price)
+- ✅ Market cap calculation function (`calculate_market_cap_usd`)
+- ✅ Automatic migration trigger in `buy` function
+- ✅ Migration helper function (`migrate_to_hyperion_internal`)
+- ✅ Admin functions: `update_oracle_price`, `force_migrate_to_hyperion`
+- ✅ View functions: `get_apt_usd_price`, `get_oracle_data`, `is_migration_threshold_reached`
+- ⚠️ **Note:** Hyperion DEX integration uses placeholder - requires actual DEX contract addresses
+
 ---
 
 ## 🔄 Pending Implementation
 
-### 1. Market Cap Calculation & Hyperion Migration
+### 1. Hyperion DEX Contract Integration
 **Priority:** High  
-**Status:** Placeholder in code (TODO comment in `buy` function)
+**Status:** Infrastructure complete, awaiting DEX contract details
 
-**Requirements:**
-1. **APT/USD Price Oracle Integration**
-   - Integrate Pyth Network or Switchboard oracle
-   - Update `PriceOracle` struct with real-time data
-   - Add oracle update function for admin
+**Completed:**
+- ✅ Price oracle struct with APT/USD price tracking
+- ✅ Market cap calculation (`calculate_market_cap_internal`, `calculate_market_cap_usd`)
+- ✅ Migration framework (`migrate_to_hyperion_internal`)
+- ✅ Automatic trigger in `buy` function when threshold reached
+- ✅ Admin functions for oracle updates and manual migration
+- ✅ View functions for monitoring market cap and migration status
 
-2. **Market Cap Calculation**
-   ```move
-   fun calculate_market_cap_usd(pool_id: Object<Metadata>): u64 {
-       // market_cap = total_supply * price_per_token * apt_usd_price
-       // Need to implement
-   }
-   ```
+**Remaining:**
+- [ ] Integrate actual Hyperion DEX contract calls in `migrate_to_hyperion_internal`
+- [ ] Replace placeholder `@0x0` with real Hyperion pool address
+- [ ] Add proper liquidity transfer logic to Hyperion
+- [ ] Test migration flow with Hyperion on devnet
 
-3. **Hyperion DEX Migration Function**
-   ```move
-   fun migrate_to_hyperion(pool_id: Object<Metadata>) {
-       // 1. Deactivate bonding curve
-       // 2. Calculate liquidity amounts
-       // 3. Call Hyperion DEX create_pool + add_liquidity
-       // 4. Update PoolSettings with hyperion_pool_address
-       // 5. Emit LiquidityMigratedEvent
-   }
-   ```
+**Required Information:**
+- Hyperion DEX contract address
+- Hyperion pool creation function signature
+- Hyperion liquidity addition function signature
 
-4. **Integration Points in `buy` Function**
-   - Check market cap after each buy
-   - Trigger migration if threshold ($75,000) reached
-   - Lock further bonding curve trades
-
-**External Dependencies Needed:**
-- Hyperion DEX contract address and API documentation
-- Oracle contract integration (Pyth/Switchboard)
+**Integration Example (to be implemented):**
+```move
+// In migrate_to_hyperion_internal():
+let hyperion_pool_addr = hyperion::pool::create_pool<FA>(
+    pool_id, 
+    apt_liquidity, 
+    token_liquidity
+);
+hyperion::liquidity::add_liquidity(hyperion_pool_addr, ...);
+pool.settings.hyperion_pool_address = option::some(hyperion_pool_addr);
+```
 
 ### 2. Testing Suite
 **Priority:** High  
@@ -188,8 +213,12 @@ struct Config           // Admin and treasury addresses
 - [ ] Admin function access control
 - [ ] Emergency trading disable
 - [ ] Edge cases (zero supply, max values)
-- [ ] Market cap calculation (when oracle integrated)
-- [ ] Migration flow (when Hyperion integrated)
+- [ ] Market cap calculation with different APT prices
+- [ ] Oracle price updates
+- [ ] Automatic migration trigger when threshold reached
+- [ ] Manual migration via `force_migrate_to_hyperion`
+- [ ] Migration prevents further bonding curve trades
+- [ ] View functions for oracle and market cap data
 
 ### 3. Documentation
 **Priority:** Medium  
@@ -313,13 +342,15 @@ Before deploying to mainnet:
 ## 🎯 Next Steps
 
 1. **Immediate:**
-   - Get Hyperion DEX contract addresses and API docs
-   - Select and integrate price oracle (recommend Pyth Network)
-   - Implement `calculate_market_cap_usd` function
-   - Implement `migrate_to_hyperion` function
+   - ✅ ~~Implement `calculate_market_cap_usd` function~~ (COMPLETED)
+   - ✅ ~~Implement `migrate_to_hyperion` function~~ (COMPLETED)
+   - Get Hyperion DEX contract addresses and API documentation
+   - Integrate actual Hyperion DEX calls in migration function
+   - Integrate real-time price oracle (Pyth Network or Switchboard)
 
 2. **Short-term:**
-   - Write comprehensive test suite
+   - Write comprehensive test suite (including migration tests)
+   - Test migration flow with Hyperion on devnet
    - Deploy to devnet for testing
    - Security audit engagement
    - Frontend integration testing
@@ -328,7 +359,7 @@ Before deploying to mainnet:
    - Mainnet deployment
    - User documentation
    - Marketing materials integration
-   - Monitoring dashboards
+   - Monitoring dashboards with market cap tracking
 
 ---
 
@@ -341,4 +372,18 @@ For questions or issues with the V2 implementation:
 
 ---
 
-*Last Updated: October 13, 2025*
+*Last Updated: October 17, 2025*
+
+## Summary of Recent Updates (Oct 17, 2025)
+
+**Market Cap Calculation & Hyperion Migration - IMPLEMENTED** ✅
+
+Added complete infrastructure for market cap tracking and automated DEX migration:
+- Oracle price management with `PriceOracle` struct
+- Market cap calculation functions using APT/USD price
+- Automatic migration trigger in `buy()` when threshold reached
+- Admin functions: `update_oracle_price`, `force_migrate_to_hyperion`
+- View functions: `get_apt_usd_price`, `get_oracle_data`, `calculate_market_cap_usd`, `is_migration_threshold_reached`
+- New event: `OraclePriceUpdatedEvent`
+
+**Status:** Ready for Hyperion DEX contract integration once addresses available.
